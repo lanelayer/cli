@@ -19,19 +19,19 @@ use tokio::sync::Mutex;
 pub trait Service: Send {
     /// Called when a new connection is established
     fn on_connection(&mut self, port: u32);
-    
+
     /// Called when data is received on a connection
     fn on_data(&mut self, port: u32, data: &[u8]);
-    
+
     /// Called when a connection receives a reset
     fn on_reset(&mut self, port: u32);
-    
+
     /// Called when a connection receives a shutdown
     fn on_shutdown(&mut self, port: u32);
-    
+
     /// Called to get data to write to a connection
     fn get_write_data(&mut self, port: u32) -> Option<Vec<u8>>;
-    
+
     /// Called to check if a connection should be shut down
     fn should_shutdown(&mut self, port: u32) -> bool;
 }
@@ -40,22 +40,22 @@ pub trait Service: Send {
 pub trait Client: Send {
     /// Called when a connection attempt succeeds
     fn on_connect_success(&mut self, port: u32);
-    
+
     /// Called when a connection attempt fails
     fn on_connect_failed(&mut self, port: u32);
-    
+
     /// Called when data is received on a connection
     fn on_data(&mut self, port: u32, data: &[u8]);
-    
+
     /// Called when a connection receives a reset
     fn on_reset(&mut self, port: u32);
-    
+
     /// Called when a connection receives a shutdown
     fn on_shutdown(&mut self, port: u32);
-    
+
     /// Called to get data to write to a connection
     fn get_write_data(&mut self, port: u32) -> Option<Vec<u8>>;
-    
+
     /// Called to check if a connection should be shut down
     fn should_shutdown(&mut self, port: u32) -> bool;
 }
@@ -108,30 +108,26 @@ impl RunnerState {
         self.clients.get_mut(&port)
     }
 
-    pub fn initiate_connection(&mut self, client_port: u32, target_cid: u32, target_port: u32) -> Result<(), Box<dyn Error>> {
-        const MAX_CONNECT_ATTEMPTS: u32 = 10;
-        let attempts = self.client_connect_attempts.entry(client_port).or_insert(0);
-        if *attempts >= MAX_CONNECT_ATTEMPTS {
-            info!("Client {} reached max connection attempts ({}), giving up", client_port, MAX_CONNECT_ATTEMPTS);
-            return Err("max connection attempts reached".into());
-        }
-        *attempts += 1;
-
+    pub fn initiate_connection(
+        &mut self,
+        client_port: u32,
+        target_cid: u32,
+        target_port: u32,
+    ) -> Result<(), Box<dyn Error>> {
         // Create a connection request packet
-        let packet = construct_packet(
-            target_port,
-            VSOCK_OP_REQUEST,
-            &[],
-        )?;
-        
+        let packet = construct_packet(target_port, VSOCK_OP_REQUEST, &[])?;
+
         // Add the packet to the write queue
         self.add_to_write_queue(packet);
-        
+
         // Map the connection to this client
         // We'll use the target_port as the connection port for now
         self.add_client_connection(target_port, client_port);
-        
-        info!("Initiated connection from client {} to {}:{}", client_port, target_cid, target_port);
+
+        info!(
+            "Initiated connection from client {} to {}:{}",
+            client_port, target_cid, target_port
+        );
         Ok(())
     }
 
@@ -216,11 +212,14 @@ pub async fn run_machine_loop(
 
         run_machine_until_yield(&mut machine)?;
         let packet = receive_packet(&mut machine)?;
-    
+
         info!("packet = {:?}", packet);
 
         if let Some(packet) = packet {
-            info!("RESPONSE FROM PACKET = {:?}", String::from_utf8_lossy(packet.payload()));
+            info!(
+                "RESPONSE FROM PACKET = {:?}",
+                String::from_utf8_lossy(packet.payload())
+            );
 
             state.add_to_read_queue(packet);
             send_empty_response(&mut machine)?;
@@ -242,7 +241,7 @@ pub async fn run_machine_loop(
                     info!("Received request packet: {:?}", packet);
                     let dst_port = packet.hdr().dst_port;
                     let src_port = packet.hdr().src_port;
-                                        
+
                     if state.get_listener(dst_port).is_some() {
                         info!("Found listener for port: {:?}", dst_port);
                         state.add_to_write_queue(construct_packet(
@@ -251,7 +250,7 @@ pub async fn run_machine_loop(
                             &[],
                         )?);
                         state.add_connection(src_port, dst_port);
-                        
+
                         // Now call the service
                         if let Some(service) = state.get_listener(dst_port) {
                             service.on_connection(src_port);
@@ -266,17 +265,17 @@ pub async fn run_machine_loop(
                     info!("Received response packet: {:?}", packet);
                     let dst_port = packet.hdr().dst_port;
                     let src_port = packet.hdr().src_port;
-
-                    let mapped_client_port = if let Some(client_port) = state.get_client_port(src_port) {
-                        Some(client_port)
-                    } else if let Some(client_port) = state.get_client_port(dst_port) {
-                        state.add_client_connection(src_port, client_port);
-                        state.add_connection(src_port, dst_port);
-                        state.remove_connection(dst_port);
-                        Some(client_port)
-                    } else {
-                        None
-                    };
+                    let mapped_client_port =
+                        if let Some(client_port) = state.get_client_port(src_port) {
+                            Some(client_port)
+                        } else if let Some(client_port) = state.get_client_port(dst_port) {
+                            state.add_client_connection(src_port, client_port);
+                            state.add_connection(src_port, dst_port);
+                            state.remove_connection(dst_port);
+                            Some(client_port)
+                        } else {
+                            None
+                        };
 
                     if let Some(client_port) = mapped_client_port {
                         state.client_connect_attempts.insert(client_port, 0);
@@ -308,7 +307,10 @@ pub async fn run_machine_loop(
                         state.remove_connection(src_port);
                         let _ = state.initiate_connection(client_port, GUEST_CID, target_port);
                     } else {
-                        info!("No connection found for port: {:?}, ignoring reset", src_port);
+                        info!(
+                            "No connection found for port: {:?}, ignoring reset",
+                            src_port
+                        );
                     }
                 }
                 VSOCK_OP_RW => {
@@ -361,45 +363,29 @@ pub async fn run_machine_loop(
             if let Some(service_port) = state.get_service_port(port) {
                 if let Some(service) = state.get_listener(service_port) {
                     if let Some(data) = service.get_write_data(port) {
-                        let packet = construct_packet(
-                            port,
-                            VSOCK_OP_RW,
-                            &data,
-                        )?;
+                        let packet = construct_packet(port, VSOCK_OP_RW, &data)?;
                         packets_to_send.push(packet);
                     }
-                    
+
                     // Check if service wants to shutdown the connection
                     if service.should_shutdown(port) {
-                        let packet = construct_packet(
-                            port,
-                            VSOCK_OP_SHUTDOWN,
-                            &[],
-                        )?;
+                        let packet = construct_packet(port, VSOCK_OP_SHUTDOWN, &[])?;
                         packets_to_send.push(packet);
                     }
                 }
             }
-            
+
             // Check if client wants to write data
             if let Some(client_port) = state.get_client_port(port) {
                 if let Some(client) = state.get_client(client_port) {
                     if let Some(data) = client.get_write_data(port) {
-                        let packet = construct_packet(
-                            port,
-                            VSOCK_OP_RW,
-                            &data,
-                        )?;
+                        let packet = construct_packet(port, VSOCK_OP_RW, &data)?;
                         packets_to_send.push(packet);
                     }
-                    
+
                     // Check if client wants to shutdown the connection
                     if client.should_shutdown(port) {
-                        let packet = construct_packet(
-                            port,
-                            VSOCK_OP_SHUTDOWN,
-                            &[],
-                        )?;
+                        let packet = construct_packet(port, VSOCK_OP_SHUTDOWN, &[])?;
                         packets_to_send.push(packet);
                     }
                 }
@@ -409,6 +395,7 @@ pub async fn run_machine_loop(
             state.add_to_write_queue(packet);
         }
         info!("Machine cycle = {}", machine.mcycle().unwrap());
+        tokio::task::yield_now().await;
     }
 }
 
