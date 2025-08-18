@@ -1,9 +1,9 @@
 use cartesi_machine::{config::runtime::RuntimeConfig, machine::Machine};
 use log::info;
 use runner::http_client::{start_health_check, HttpClient};
-use runner::utils::Client;
 use runner::http_health_check_client::add_http_health_check_client;
 use runner::http_server::{add_http_server, HttpServer};
+use runner::utils::Client;
 use runner::utils::{run_machine_loop, RunnerState};
 use std::path::Path;
 use std::sync::Arc;
@@ -37,12 +37,13 @@ async fn test_cartesi_machine_health_check() -> Result<(), Box<dyn std::error::E
     )?));
 
     let state = Arc::new(Mutex::new(RunnerState::new()));
-    {
+    let mut health_check_receiver = {
         let mut state_guard = state.lock().await;
         add_http_server(&mut state_guard);
-        add_http_health_check_client(&mut state_guard, 9000, 10);
+        let rx = add_http_health_check_client(&mut state_guard, 9000, 10);
         start_health_check(&mut state_guard, 9000, 1, GUEST_PORT)?;
-    }
+        rx
+    };
 
     let machine_for_loop = Arc::clone(&machine);
     let state_for_loop = Arc::clone(&state);
@@ -50,9 +51,17 @@ async fn test_cartesi_machine_health_check() -> Result<(), Box<dyn std::error::E
         info!("Starting machine loop with shared state...");
         let _ = run_machine_loop(machine_for_loop, state_for_loop).await;
     };
-
     // Let the loop run briefly to exercise the path, then time out
-    let _ = tokio::time::timeout(std::time::Duration::from_millis(500), machine_loop_fut).await;
+
+    tokio::select! {
+        _ = health_check_receiver.recv() => {
+            println!("Health check test sucessful")
+        }
+        _ = machine_loop_fut => {
+            println!("machine_loop_fut completed first")
+        }
+    };
+
     println!("Machine loop completed.");
     Ok(())
 }

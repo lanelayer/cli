@@ -1,4 +1,4 @@
-use crate::utils::{Service, RunnerState};
+use crate::utils::{RunnerState, Service};
 use log::info;
 use std::collections::HashMap;
 
@@ -41,14 +41,14 @@ impl HttpServer {
         // Simple HTTP request parsing
         let request_str = String::from_utf8_lossy(data);
         let lines: Vec<&str> = request_str.lines().collect();
-        
+
         if lines.is_empty() {
             return None;
         }
 
         let first_line = lines[0];
         let parts: Vec<&str> = first_line.split_whitespace().collect();
-        
+
         if parts.len() < 2 {
             return None;
         }
@@ -84,7 +84,7 @@ impl Service for HttpServer {
 
     fn on_data(&mut self, port: u32, data: &[u8]) {
         info!("HTTP server received {} bytes on port {}", data.len(), port);
-        
+
         // Check if we need to process this data
         let should_process = {
             if let Some(connection) = self.connections.get(&port) {
@@ -94,7 +94,7 @@ impl Service for HttpServer {
                 false
             }
         };
-        
+
         if should_process {
             // Get buffer data
             let buffer_data = {
@@ -104,10 +104,10 @@ impl Service for HttpServer {
                     return;
                 }
             };
-            
+
             // Process request
             let response = self.handle_http_request(&buffer_data);
-            
+
             // Update connection
             if let Some(connection) = self.connections.get_mut(&port) {
                 connection.request_complete = true;
@@ -138,7 +138,11 @@ impl Service for HttpServer {
 
     fn get_write_data(&mut self, port: u32) -> Option<Vec<u8>> {
         if let Some(response) = self.pending_responses.remove(&port) {
-            info!("HTTP server sending {} bytes on port {}", response.len(), port);
+            info!(
+                "HTTP server sending {} bytes on port {}",
+                response.len(),
+                port
+            );
             return Some(response);
         }
         None
@@ -155,4 +159,4 @@ pub fn add_http_server(state: &mut RunnerState) {
     let http_server = HttpServer::new(8080);
     state.add_listener(8080, Box::new(http_server));
     info!("HTTP server added to runner state on port 8080");
-} 
+}

@@ -78,21 +78,25 @@ impl HttpClient {
     pub fn parse_http_response(&self, response: &[u8]) -> Option<(u16, String)> {
         let response_str = String::from_utf8_lossy(response);
         let lines: Vec<&str> = response_str.lines().collect();
-        
+
         if lines.is_empty() {
             return None;
         }
 
         let status_line = lines[0];
         let parts: Vec<&str> = status_line.split_whitespace().collect();
-        
+
         if parts.len() < 3 {
             return None;
         }
 
         let status_code = parts[1].parse::<u16>().ok()?;
-        let body = response_str.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
-        
+        let body = response_str
+            .split("\r\n\r\n")
+            .nth(1)
+            .unwrap_or("")
+            .to_string();
+
         Some((status_code, body))
     }
 }
@@ -111,19 +115,19 @@ impl Client for HttpClient {
 
     fn on_data(&mut self, port: u32, data: &[u8]) {
         info!("HTTP client received {} bytes on port {}", data.len(), port);
-        
+
         if let Some(connection) = self.connections.get_mut(&port) {
             connection.buffer.extend_from_slice(data);
-            
+
             // Check if we have a complete HTTP response
             let buffer_str = String::from_utf8_lossy(&connection.buffer);
             if buffer_str.contains("\r\n\r\n") && !connection.response_complete {
                 connection.response_complete = true;
-                
+
                 // Store the response
                 self.responses.insert(port, connection.buffer.clone());
                 info!("HTTP client received complete response on port {}", port);
-                
+
                 // Parse and log the response - clone buffer to avoid borrowing issues
                 let buffer_clone = connection.buffer.clone();
                 if let Some((status_code, body)) = self.parse_http_response(&buffer_clone) {
@@ -149,7 +153,11 @@ impl Client for HttpClient {
 
     fn get_write_data(&mut self, port: u32) -> Option<Vec<u8>> {
         if let Some(request) = self.pending_requests.remove(&port) {
-            info!("HTTP client sending {} bytes on port {}", request.len(), port);
+            info!(
+                "HTTP client sending {} bytes on port {}",
+                request.len(),
+                port
+            );
             return Some(request);
         }
         None
@@ -184,14 +192,15 @@ pub fn make_http_request(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Initiate the connection
     state.initiate_connection(client_port, target_cid, target_port)?;
-    
+
     // Queue the request for when connection is established
-    info!("HTTP request {} {} to {}:{} queued", method, path, target_cid, target_port);
-    
+    info!(
+        "HTTP request {} {} to {}:{} queued",
+        method, path, target_cid, target_port
+    );
+
     Ok(())
 }
-
-
 
 /// Helper function to start a health check
 pub fn start_health_check(
@@ -200,10 +209,13 @@ pub fn start_health_check(
     target_cid: u32,
     target_port: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    info!("Starting health check from client {} to {}:{}", client_port, target_cid, target_port);
-    
+    info!(
+        "Starting health check from client {} to {}:{}",
+        client_port, target_cid, target_port
+    );
+
     // Initiate the connection
     state.initiate_connection(client_port, target_cid, target_port)?;
-    
+
     Ok(())
-} 
+}

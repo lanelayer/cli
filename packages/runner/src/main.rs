@@ -8,10 +8,10 @@ mod http_client;
 mod http_health_check_client;
 mod http_server;
 mod utils;
-use crate::utils::{run_machine_loop, RunnerState};
-use crate::http_server::add_http_server;
 use crate::http_client::{add_http_client, start_health_check};
 use crate::http_health_check_client::add_http_health_check_client;
+use crate::http_server::add_http_server;
+use crate::utils::{run_machine_loop, RunnerState};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 /// The path to the machine snapshot.
