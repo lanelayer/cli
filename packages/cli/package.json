@@ -1,15 +1,15 @@
 {
-  "name": "@zippie/vcr",
+  "name": "@lanelayer/cli",
   "version": "0.2.8",
-  "description": "Verifiable Container Runner CLI",
+  "description": "LaneLayer CLI - Verifiable Container Runner",
   "bin": {
-    "vcr": "dist/cli.js"
+    "lane": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
     "start": "node dist/cli.js"
   },
-  "author": "Zippie",
+  "author": "LaneLayer",
   "license": "Unlicensed",
   "dependencies": {},
   "devDependencies": {

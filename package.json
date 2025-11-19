@@ -1,6 +1,6 @@
 {
-  "name": "vcr-monorepo",
+  "name": "lane-cli-monorepo",
   "private": true,
   "version": "0.1.0",
-  "description": "Monorepo for Zippie VCR and related packages"
+  "description": "Monorepo for LaneLayer CLI and related packages"
 } 
