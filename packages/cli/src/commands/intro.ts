@@ -1,72 +1,69 @@
-import { execSync } from 'child_process';
-import { showCommandHelp } from './help';
+import { execSync } from "child_process";
+import { showCommandHelp } from "./help";
 
 export function handleIntroCommand(args: string[]): void {
   // Check for help flag
-  if (args.includes('--help') || args.includes('-h')) {
-    showCommandHelp('intro');
+  if (args.includes("--help") || args.includes("-h")) {
+    showCommandHelp("intro");
     return;
   }
-  
-  console.log(`
-🚀 VCR - Verifiable Container Runner
-====================================
 
-VCR helps you build and run verifiable, deterministic containers with RISC-V support.
+  console.log(`
+🚀 LaneLayer CLI - Bitcoin-Anchored Execution Environment
+=========================================================
+
+LaneLayer is a coordination layer for intent-driven execution, anchored in Bitcoin.
+It lets you execute trustless intents, swaps, lending, and payments without locking BTC.
 
 📋 Quick Start Workflow
 =======================
 
-1. Create a new project:
-   vcr create myapp --template python
+1. Start the Docker environment:
+   lane up
 
-2. Build and run (choose your profile):
-   vcr up dev          # Fast development (native platform)
-   vcr up stage        # RISC-V testing with debug tools
-   vcr up prod         # Verifiable RISC-V (Cartesi Machine)
+2. Create a wallet:
+   lane wallet create
 
-3. Interact with your app:
-   vcr logs            # View application logs
-   vcr exec "ls -la"   # Run commands in container
-   vcr shell           # Open interactive shell
+3. Get your Bitcoin address:
+   lane wallet address
 
-4. Stop when done:
-   vcr down
+4. Start the Core Lane node:
+   lane start
 
-🎯 Profile Guide
-================
+5. Burn BTC to get laneBTC:
+   lane burn --amount 100000 --eth-address YOUR_ETH_ADDRESS
 
-dev          - Native platform, fastest development
-stage        - RISC-V QEMU with debug tools (SSH access)
-stage-release- RISC-V QEMU without debug tools
-prod         - Verifiable RISC-V Cartesi Machine
-prod-debug   - Verifiable RISC-V with debug tools
+6. Create exit intent (withdraw BTC):
+   lane exit --bitcoin-address YOUR_BTC_ADDRESS --amount 50000000
 
-💡 Pro Tips
-===========
+💡 Key Concepts
+===============
 
-• Start with 'dev' for fast iteration
-• Use 'stage' to test RISC-V compatibility  
-• Use 'prod' for verifiable, attested builds
-• SSH keys are auto-generated for debug profiles
-• All builds (based on same built Docker image) are deterministic and reproducible
+• Bitcoin Anchored - All activity settles to Bitcoin, no locked BTC
+• Intent-Driven - Express what you want, not how to do it
+• Trustless - No need for centralized exchanges or risky bridges
+• Miner Fees - Usage increases Bitcoin transaction fees for miners
 
 🔧 Common Commands
 ==================
 
-vcr create <name> --template <lang>  # New project
-vcr up <profile>                     # Build and run
-vcr down                             # Stop environment
-vcr logs                             # View logs
-vcr exec <command>                   # Run command
-vcr export <profile> <path>          # Export artifacts
+lane up                              # Start Docker environment
+lane down                            # Stop Docker environment
+lane wallet create                   # Create a new wallet
+lane wallet address                  # Get Bitcoin address
+lane wallet balance                  # Get balance
+lane start                           # Start Core Lane node
+lane burn                            # Burn BTC to get laneBTC
+lane exit                            # Create exit intent
+lane status                          # Check node status
+lane logs                            # View logs
 
 📚 Need More Help?
 ==================
 
-vcr --help                           # Full command reference
-vcr <command> --help                 # Command-specific help
+lane --help                          # Full command reference
+lane <command> --help                # Command-specific help
 
-Happy building! 🐳
+Learn more: https://lanelayer.github.io
 `);
-} 
+}
