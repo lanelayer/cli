@@ -16,7 +16,7 @@ import { showCommandHelp } from './help';
 // Import the getCacheDirectory function from build.ts
 function getCacheDirectory(imageTag?: string, profile?: string): string {
   const pathHash = getPathHash();
-  const baseCacheDir = join(homedir(), '.cache', 'vcr', pathHash);
+  const baseCacheDir = join(homedir(), '.cache', 'lane', pathHash);
   
   if (imageTag) {
     // Create a hash of the image tag for cache directory
@@ -38,7 +38,7 @@ function resolveRegistryPath(registryPath: string): { resolvedPath: string; conf
     
     // Create hash of the remote key
     const remoteHash = createHash('sha256').update(remoteKey).digest('hex').substring(0, 8);
-    const remoteConfigPath = join(homedir(), '.vcr', 'remotes', `${remoteHash}.json`);
+    const remoteConfigPath = join(homedir(), '.lane', 'remotes', `${remoteHash}.json`);
     
     if (existsSync(remoteConfigPath)) {
       try {
@@ -120,11 +120,11 @@ export function handlePushCommand(args: string[]): void {
 
   // Validate required arguments
   if (!registryPath) {
-    console.error('Error: vcr push requires a registry path');
-    console.log('Usage: vcr push <registry-path> [options]');
+    console.error('Error: lane push requires a registry path');
+    console.log('Usage: lane push <registry-path> [options]');
     console.log('Examples:');
-    console.log('  vcr push my-registry.com/myapp:latest');
-    console.log('  vcr push ghcr.io/myuser/myapp:v1.0.0');
+    console.log('  lane push my-registry.com/myapp:latest');
+    console.log('  lane push ghcr.io/myuser/myapp:v1.0.0');
     process.exit(1);
   }
 
@@ -244,7 +244,7 @@ export function handlePushCommand(args: string[]): void {
       console.log(`🌿 Current branch: ${currentBranch}`);
       
                   // Add the git remote if it doesn't exist
-            const remoteName = resolved.config.remote_name || 'vcr-push';
+            const remoteName = resolved.config.remote_name || 'lane-push';
             try {
         execSync(`git remote get-url ${remoteName}`, { stdio: 'pipe' });
         console.log(`✅ Git remote '${remoteName}' already exists`);

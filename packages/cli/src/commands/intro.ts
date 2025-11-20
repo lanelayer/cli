@@ -9,61 +9,68 @@ export function handleIntroCommand(args: string[]): void {
   }
 
   console.log(`
-🚀 LaneLayer CLI - Bitcoin-Anchored Execution Environment
-=========================================================
+🚀 LaneLayer CLI - Container Development Platform
+==================================================
 
-LaneLayer is a coordination layer for intent-driven execution, anchored in Bitcoin.
-It lets you execute trustless intents, swaps, lending, and payments without locking BTC.
+Build HTTP server containers that handle payments and execute user intents.
+LaneLayer handles the complexity behind the scenes - you just write standard HTTP servers.
 
 📋 Quick Start Workflow
 =======================
 
-1. Start the Docker environment:
-   lane up
+1. Create a new HTTP server project:
+   lane create myapp --template python
 
-2. Create a wallet:
-   lane wallet create
+2. Build and run (choose your profile):
+   lane up dev          # Fast development (native platform)
+   lane up stage        # RISC-V testing with debug tools
+   lane up prod         # Verifiable RISC-V (Cartesi Machine)
 
-3. Get your Bitcoin address:
-   lane wallet address
+3. Interact with your app:
+   lane logs            # View application logs
+   lane exec "ls -la"   # Run commands in container
+   lane shell           # Open interactive shell
 
-4. Start the Core Lane node:
-   lane start
+4. Stop when done:
+   lane down
 
-5. Burn BTC to get laneBTC:
-   lane burn --amount 100000 --eth-address YOUR_ETH_ADDRESS
+🎯 Profile Guide
+================
 
-6. Create exit intent (withdraw BTC):
-   lane exit --bitcoin-address YOUR_BTC_ADDRESS --amount 50000000
+dev          - Native platform, fastest development
+stage        - RISC-V QEMU with debug tools (SSH access)
+stage-release- RISC-V QEMU without debug tools
+prod         - Verifiable RISC-V Cartesi Machine
+prod-debug   - Verifiable RISC-V with debug tools
 
-💡 Key Concepts
-===============
+💡 Pro Tips
+===========
 
-• Bitcoin Anchored - All activity settles to Bitcoin, no locked BTC
-• Intent-Driven - Express what you want, not how to do it
-• Trustless - No need for centralized exchanges or risky bridges
-• Miner Fees - Usage increases Bitcoin transaction fees for miners
+• Start with 'dev' for fast iteration
+• Use 'stage' to test RISC-V compatibility  
+• Use 'prod' for verifiable, attested builds
+• SSH keys are auto-generated for debug profiles
+• All builds (based on same built Docker image) are deterministic and reproducible
+• Your HTTP server should expose a /health endpoint
+• Same container can deploy to TEE or LaneLayer
 
 🔧 Common Commands
 ==================
 
-lane up                              # Start Docker environment
-lane down                            # Stop Docker environment
-lane wallet create                   # Create a new wallet
-lane wallet address                  # Get Bitcoin address
-lane wallet balance                  # Get balance
-lane start                           # Start Core Lane node
-lane burn                            # Burn BTC to get laneBTC
-lane exit                            # Create exit intent
-lane status                          # Check node status
-lane logs                            # View logs
+lane create <name> --template <lang>  # New HTTP server project
+lane up <profile>                     # Build and run
+lane down                             # Stop environment
+lane logs                             # View logs
+lane exec <command>                   # Run command
+lane export <profile> <path>          # Export artifacts
+lane push <registry>                  # Push to registry
 
 📚 Need More Help?
 ==================
 
-lane --help                          # Full command reference
-lane <command> --help                # Command-specific help
+lane --help                           # Full command reference
+lane <command> --help                 # Command-specific help
 
-Learn more: https://lanelayer.github.io
+Happy building! 🐳
 `);
 }

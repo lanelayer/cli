@@ -9,7 +9,7 @@ import { showCommandHelp } from './help';
 // Import the updated getCacheDirectory function from build.ts
 function getCacheDirectory(imageTag?: string, profile?: string, guestAgentImage?: string): string {
   const pathHash = getPathHash();
-  const baseCacheDir = join(homedir(), '.cache', 'vcr', pathHash);
+  const baseCacheDir = join(homedir(), '.cache', 'lane', pathHash);
   
   if (imageTag) {
     // Create a hash of the image tag for cache directory
@@ -87,7 +87,7 @@ export function handleExportCommand(args: string[]): void {
 
     // Get cache directory using the same logic as build process
     const pathHash = getPathHash();
-    const baseCacheDir = join(homedir(), '.cache', 'vcr', pathHash);
+    const baseCacheDir = join(homedir(), '.cache', 'lane', pathHash);
     
     // For export, we need to find the actual cache directory
     // Since we don't have the image tag, we'll look for the most recent subdirectory
@@ -99,7 +99,7 @@ export function handleExportCommand(args: string[]): void {
         if (guestAgentImage && (profile === 'prod' || profile === 'prod-debug')) {
           // For prod/prod-debug with guest-agent image, we need to find the specific cache directory
           // Create a hash that includes the guest-agent image
-          const hashInput = `vcr-build-${pathHash}:latest:${guestAgentImage}`;
+          const hashInput = `lane-build-${pathHash}:latest:${guestAgentImage}`;
           const imageHash = createHash('sha256').update(hashInput).digest('hex').substring(0, 8);
           const specificCacheDir = join(baseCacheDir, imageHash);
           
