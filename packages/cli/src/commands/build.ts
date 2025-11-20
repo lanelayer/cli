@@ -19,7 +19,7 @@ import { getPathHash, getComposeCacheDirectory } from "../cli";
 // Import check functions
 import {
   checkBuildxAvailable,
-  checkVcrBuilder,
+  checkLaneBuilder,
   checkRiscv64Support,
   requireOciExportSupport,
 } from "../checks";
@@ -97,7 +97,7 @@ export function handleBuildCommand(args: string[]): void {
   }
 
   checkBuildxAvailable();
-  checkVcrBuilder();
+  checkLaneBuilder();
   // Removed: checkLocalRegistry();
 
   let imageTag: string | undefined;
@@ -202,7 +202,7 @@ export function handleBuildCommand(args: string[]): void {
 
   if (!imageTag) {
     const pathHash = getPathHash();
-    const baseTag = `vcr-build-${pathHash}:latest`;
+    const baseTag = `lane-build-${pathHash}:latest`;
     // Add -hot suffix for hot reload builds
     imageTag =
       profile === "dev" && hot
@@ -244,7 +244,7 @@ export function handleUpCommand(args: string[]): void {
   }
 
   checkBuildxAvailable();
-  checkVcrBuilder();
+  checkLaneBuilder();
   // Removed: checkLocalRegistry();
 
   let imageTag: string | undefined;
@@ -352,7 +352,7 @@ export function handleUpCommand(args: string[]): void {
 
   if (!imageTag) {
     const pathHash = getPathHash();
-    imageTag = `vcr-build-${pathHash}:latest`;
+    imageTag = `lane-build-${pathHash}:latest`;
     console.log(`No tag provided, using default: ${imageTag}`);
   }
 
@@ -389,7 +389,7 @@ function getCacheDirectory(
   guestAgentImage?: string
 ): string {
   const pathHash = getPathHash();
-  const baseCacheDir = join(homedir(), ".cache", "vcr", pathHash);
+  const baseCacheDir = join(homedir(), ".cache", "lane", pathHash);
 
   if (imageTag) {
     // Create a hash of the image tag for cache directory
@@ -550,7 +550,7 @@ function buildLinuxKitImage(
       const linuxkitCacheDir = join(
         homedir(),
         ".cache",
-        "vcr",
+        "lane",
         "linuxkit-cache"
       );
       if (!existsSync(linuxkitCacheDir)) {

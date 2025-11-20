@@ -365,12 +365,12 @@ export function handleCatCommand(args: string[]): void {
       const catArgs = args.slice(1);
       if (catArgs.length !== 1) {
         console.error(
-          "Error: vcr cat requires exactly 1 argument: <file-path>"
+          "Error: lane cat requires exactly 1 argument: <file-path>"
         );
         console.log("Examples:");
-        console.log("  vcr cat /app/config.json");
-        console.log("  vcr cat /app/logs/app.log");
-        console.log("  vcr cat /app/data/output.txt");
+        console.log("  lane cat /app/config.json");
+        console.log("  lane cat /app/logs/app.log");
+        console.log("  lane cat /app/data/output.txt");
         process.exit(1);
       }
 

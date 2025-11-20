@@ -4,7 +4,7 @@ import { existsSync, mkdirSync } from "fs";
 import { showCommandHelp } from "./help";
 
 export function createProject(targetDir: string, template: string) {
-  console.log(`Creating new VCR project: ${targetDir}`);
+  console.log(`Creating new LaneLayer project: ${targetDir}`);
   console.log(`Using template: ${template}`);
 
   // Check if target directory already exists
@@ -29,7 +29,7 @@ export function createProject(targetDir: string, template: string) {
   const tempDir = join(targetDir, ".temp-clone");
 
   try {
-    console.log(`Cloning VCR repository to get template...`);
+    console.log(`Cloning LaneLayer CLI repository to get template...`);
     execSync(`git clone ${templateUrl} ${tempDir}`, { stdio: "inherit" });
 
     // Check if the template directory exists

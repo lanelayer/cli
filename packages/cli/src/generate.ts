@@ -9,7 +9,7 @@ import { LANE_SNAPSHOT_BUILDER_IMAGE, GUEST_AGENT_IMAGE } from "./constants";
 
 function getCacheDirectory(ociTarPath?: string): string {
   const pathHash = getPathHash();
-  const baseCacheDir = join(homedir(), ".cache", "vcr", pathHash);
+  const baseCacheDir = join(homedir(), ".cache", "lane", pathHash);
 
   if (ociTarPath) {
     // Extract the image tag from the OCI tar path to match build.ts logic
@@ -186,12 +186,12 @@ export function generateDockerCompose(
 
     isolatedServiceConfig = {
       image: LANE_SNAPSHOT_BUILDER_IMAGE,
-      container_name: `${pathHash}-vcr-isolated-service`,
-      hostname: "vcr-isolated-service",
+      container_name: `${pathHash}-lane-isolated-service`,
+      hostname: "lane-isolated-service",
       networks: ["internal_net"],
       volumes: [
         `${finalCacheDir}:/work`,
-        `${pathHash}_vcr_shared_data:/media/vcr`,
+        `${pathHash}_lane_shared_data:/media/lane`,
       ],
       command: [
         "/bin/bash",
@@ -233,11 +233,11 @@ export function generateDockerCompose(
         "traefik.http.routers.isolated.entrypoints=web",
         "traefik.http.services.isolated.loadbalancer.server.port=8080",
         "traefik.http.services.isolated.loadbalancer.server.scheme=http",
-        `vcr.profile=${profile}`,
-        `vcr.image.tag=${imageTag}`,
-        `vcr.image.path=${ociTarPath || "none"}`,
-        `vcr.build.timestamp=${new Date().toISOString()}`,
-        `vcr.path.hash=${pathHash}`,
+        `lane.profile=${profile}`,
+        `lane.image.tag=${imageTag}`,
+        `lane.image.path=${ociTarPath || "none"}`,
+        `lane.build.timestamp=${new Date().toISOString()}`,
+        `lane.path.hash=${pathHash}`,
       ],
     };
   } else if (profile === "prod" || profile === "prod-debug") {
@@ -247,12 +247,12 @@ export function generateDockerCompose(
 
     isolatedServiceConfig = {
       image: LANE_SNAPSHOT_BUILDER_IMAGE,
-      container_name: `${pathHash}-vcr-isolated-service`,
-      hostname: "vcr-isolated-service",
+      container_name: `${pathHash}-lane-isolated-service`,
+      hostname: "lane-isolated-service",
       networks: ["internal_net"],
       volumes: [
         `${finalCacheDir}:/work`,
-        `${pathHash}_vcr_shared_data:/media/vcr`,
+        `${pathHash}_lane_shared_data:/media/lane`,
       ],
       command: [
         "cartesi-machine",
@@ -280,16 +280,16 @@ export function generateDockerCompose(
         "traefik.http.routers.isolated.entrypoints=web",
         "traefik.http.services.isolated.loadbalancer.server.port=8080",
         "traefik.http.services.isolated.loadbalancer.server.scheme=http",
-        `vcr.profile=${profile}`,
-        `vcr.image.tag=${imageTag}`,
-        `vcr.image.path=${ociTarPath || "none"}`,
-        `vcr.build.timestamp=${new Date().toISOString()}`,
-        `vcr.path.hash=${pathHash}`,
+        `lane.profile=${profile}`,
+        `lane.image.tag=${imageTag}`,
+        `lane.image.path=${ociTarPath || "none"}`,
+        `lane.build.timestamp=${new Date().toISOString()}`,
+        `lane.path.hash=${pathHash}`,
       ],
     };
   } else {
     // Default for dev profile
-    const volumes = [`${pathHash}_vcr_shared_data:/media/vcr`];
+    const volumes = [`${pathHash}_lane_shared_data:/media/lane`];
 
     // Add source code mount for hot reloading
     if (hot) {
@@ -299,8 +299,8 @@ export function generateDockerCompose(
 
     isolatedServiceConfig = {
       image: imageReference,
-      container_name: `${pathHash}-vcr-isolated-service`,
-      hostname: "vcr-isolated-service",
+      container_name: `${pathHash}-lane-isolated-service`,
+      hostname: "lane-isolated-service",
       networks: ["internal_net"],
       volumes: volumes,
       restart: "no",
@@ -318,12 +318,12 @@ export function generateDockerCompose(
         "traefik.http.routers.isolated.entrypoints=web",
         "traefik.http.services.isolated.loadbalancer.server.port=8080",
         "traefik.http.services.isolated.loadbalancer.server.scheme=http",
-        `vcr.profile=${profile}`,
-        `vcr.image.tag=${imageTag}`,
-        `vcr.image.path=${ociTarPath || "none"}`,
-        `vcr.build.timestamp=${new Date().toISOString()}`,
-        `vcr.path.hash=${pathHash}`,
-        ...(hot ? [`vcr.hot.reload=true`] : []),
+        `lane.profile=${profile}`,
+        `lane.image.tag=${imageTag}`,
+        `lane.image.path=${ociTarPath || "none"}`,
+        `lane.build.timestamp=${new Date().toISOString()}`,
+        `lane.path.hash=${pathHash}`,
+        ...(hot ? [`lane.hot.reload=true`] : []),
       ],
       // No build or environment keys here
     };
@@ -333,8 +333,8 @@ export function generateDockerCompose(
     services: {
       traefik: {
         image: "traefik:v2.10",
-        container_name: `${pathHash}-vcr-traefik`,
-        hostname: "vcr-traefik",
+        container_name: `${pathHash}-lane-traefik`,
+        hostname: "lane-traefik",
         restart: "no",
         command: [
           "--api.insecure=true",
@@ -358,12 +358,12 @@ export function generateDockerCompose(
       isolated_service: isolatedServiceConfig,
       internet_service: {
         image: "alpine",
-        container_name: `${pathHash}-vcr-guest-agent`,
-        hostname: "vcr-guest-agent",
+        container_name: `${pathHash}-lane-guest-agent`,
+        hostname: "lane-guest-agent",
         restart: "no",
-        command: 'sh -c "mkdir -p /media/vcr/transient && sleep infinity"',
+        command: 'sh -c "mkdir -p /media/lane/transient && sleep infinity"',
         networks: ["internal_net", "external_net"],
-        volumes: [`${pathHash}_vcr_shared_data:/media/vcr`],
+        volumes: [`${pathHash}_lane_shared_data:/media/lane`],
       },
     },
     networks: {
@@ -376,7 +376,7 @@ export function generateDockerCompose(
       },
     },
     volumes: {
-      [`${pathHash}_vcr_shared_data`]: {
+      [`${pathHash}_lane_shared_data`]: {
         driver: "local",
       },
     },
