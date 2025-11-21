@@ -78,7 +78,7 @@ export function generateLinuxKitYaml(
   // Build onboot section - dhcpcd is always needed for network configuration
   const onboot = `onboot:
   - name: dhcpcd
-    image: ghcr.io/lanelayer/lane-dhcpcd@sha256:3ad775c7f5402fc960d3812bec6650ffa48747fbd9bd73b62ff71b8d0bb72c5a
+    image: ghcr.io/lanelayer/linuxkit-dhcpcd@sha256:3ad775c7f5402fc960d3812bec6650ffa48747fbd9bd73b62ff71b8d0bb72c5a
     command: ["/sbin/dhcpcd", "--nobackground", "-f", "/dhcpcd.conf", "-1"]
 `;
 
@@ -88,7 +88,7 @@ export function generateLinuxKitYaml(
   if (includeDebugTools) {
     services += `
   - name: sshd
-    image: ghcr.io/lanelayer/lane-linuxkit-sshd@sha256:448f0a6f0b30e7f6f4a28ab11268b07ed2fb81a4d4feb1092c0b16a126d33183
+    image: ghcr.io/lanelayer/linuxkit-sshd@sha256:448f0a6f0b30e7f6f4a28ab11268b07ed2fb81a4d4feb1092c0b16a126d33183
     binds.add:
       - /root/.ssh:/root/.ssh
 `;
@@ -140,9 +140,9 @@ export function generateLinuxKitYaml(
   }
 
   const yamlConfig = `init:
-  - ghcr.io/lanelayer/lane-init@sha256:fd6878920ee9dd846689fc79839a82dc40f3cf568f16621f0e97a8b7b501df62
-  - ghcr.io/lanelayer/lane-runc@sha256:3f0a1027ab7507f657cafd28abff329366c0e774714eac48c4d4c10f46778596
-  - ghcr.io/lanelayer/lane-containerd@sha256:97a307ea9e3eaa21d378f903f067d742bd66abd49e5ff483ae85528bed6d4e8a
+  - ghcr.io/lanelayer/linuxkit-init@sha256:fd6878920ee9dd846689fc79839a82dc40f3cf568f16621f0e97a8b7b501df62
+  - ghcr.io/lanelayer/linuxkit-runc@sha256:3f0a1027ab7507f657cafd28abff329366c0e774714eac48c4d4c10f46778596
+  - ghcr.io/lanelayer/linuxkit-containerd@sha256:97a307ea9e3eaa21d378f903f067d742bd66abd49e5ff483ae85528bed6d4e8a
 ${onboot}services:
 ${services}${files}`;
 
