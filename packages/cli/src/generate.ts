@@ -75,16 +75,12 @@ export function generateLinuxKitYaml(
     process.env.CUSTOM_GUEST_AGENT_IMAGE ||
     GUEST_AGENT_IMAGE;
 
-  // Build onboot section conditionally
-  let onboot = "";
-  // this should really be be gone in debug tools but for some reason we need it
-  if (true /* includeDebugTools */) {
-    onboot = `onboot:
+  // Build onboot section - dhcpcd is always needed for network configuration
+  const onboot = `onboot:
   - name: dhcpcd
     image: ghcr.io/lanelayer/lane-dhcpcd@sha256:3ad775c7f5402fc960d3812bec6650ffa48747fbd9bd73b62ff71b8d0bb72c5a
     command: ["/sbin/dhcpcd", "--nobackground", "-f", "/dhcpcd.conf", "-1"]
 `;
-  }
 
   // Build services list conditionally
   let services = "";

@@ -7,12 +7,12 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
     paths:
-      - 'packages/cli/**'
+      - "packages/cli/**"
   pull_request:
     branches:
-      - '*'
+      - "*"
     paths:
-      - 'packages/cli/**'
+      - "packages/cli/**"
   workflow_dispatch:
 
 jobs:
@@ -34,8 +34,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'pnpm'
+          node-version: "22"
+          cache: "pnpm"
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
@@ -44,11 +44,16 @@ jobs:
 
       - name: Build CLI
         run: |
-          pnpm --filter @zippie/vcr build
+          pnpm --filter @lanelayer/cli build
+
+      - name: Verify CLI build output
+        run: |
+          ls -la packages/cli/dist/
+          test -f packages/cli/dist/cli.js || (echo "Build output not found!" && exit 1)
 
       - name: Test CLI help
         run: |
-          pnpm --filter @zippie/vcr start --help
+          pnpm --filter @lanelayer/cli start --help
 
       - name: Check if Docker is available
         run: |
@@ -90,7 +95,7 @@ jobs:
       - name: Test CLI commands across profiles
         run: |
           cd packages/sample-python
-          
+
           # Test each profile with appropriate command testing
           for profile in dev stage stage-release prod prod-debug; do
             echo "=== Testing $profile profile ==="
@@ -150,41 +155,41 @@ jobs:
         run: |
           # Test project creation with different templates
           echo "Testing project creation..."
-          
+
           # Create a test directory for new projects
-          mkdir -p /tmp/vcr-test-projects
-          cd /tmp/vcr-test-projects
-          
+          mkdir -p /tmp/lane-test-projects
+          cd /tmp/lane-test-projects
+
           # Test Python template
           echo "Testing Python template..."
           node $GITHUB_WORKSPACE/packages/cli/dist/cli.js create test-python --template python
           ls -la test-python/
-          
+
           # Test Node.js template
           #echo "Testing Node.js template..."
           #node ../../packages/cli/dist/cli.js create test-node --template node
           #ls -la test-node/
-          
+
           # Test Go template
           #echo "Testing Go template..."
           #node ../../packages/cli/dist/cli.js create test-go --template go
           #ls -la test-go/
-          
+
           # Test Rust template
           #echo "Testing Rust template..."
           #node ../../packages/cli/dist/cli.js create test-rust --template rust
           #ls -la test-rust/
-          
+
           # Clean up test projects
-          rm -rf /tmp/vcr-test-projects
+          rm -rf /tmp/lane-test-projects
 
       - name: Test CLI prune commands
         run: |
           echo "Testing prune commands..."
-          
+
           # Test local prune
           node $GITHUB_WORKSPACE/packages/cli/dist/cli.js prune --local && echo "Local prune test completed"
-          
+
           # Test global prune
           node $GITHUB_WORKSPACE/packages/cli/dist/cli.js prune && echo "Global prune test completed"
 
@@ -192,23 +197,23 @@ jobs:
         run: |
           echo "Testing export command..."
           cd packages/sample-python
-          
+
           # Build stage profile first
           node ../../packages/cli/dist/cli.js build stage
-          
+
           # Test export stage profile
           echo "Testing export stage profile..."
           node ../../packages/cli/dist/cli.js export stage ./test-export-stage
           ls -la ./test-export-stage/
-          
+
           # Build prod-debug profile to test Cartesi machine hash export
           node ../../packages/cli/dist/cli.js build prod-debug
-          
+
           # Test export prod-debug profile (includes Cartesi machine hash)
           echo "Testing export prod-debug profile..."
           node ../../packages/cli/dist/cli.js export prod-debug ./test-export-prod-debug
           ls -la ./test-export-prod-debug/
-          
+
           # Verify Cartesi machine hash file is present
           if [ -f "./test-export-prod-debug/vc-cm-snapshot.hash" ]; then
             echo "✅ Cartesi machine hash file found in export"
@@ -218,25 +223,25 @@ jobs:
             echo "❌ Cartesi machine hash file missing from export"
             exit 1
           fi
-          
+
           # Test export with invalid profile
           node ../../packages/cli/dist/cli.js export dev ./test-export-dev 2>&1 | grep -q "Invalid profile" || echo "Invalid profile error handling test completed"
-          
+
           # Test export with missing arguments
           node ../../packages/cli/dist/cli.js export stage 2>&1 | grep -q "requires exactly 2 arguments" || echo "Missing arguments error handling test completed"
-          
+
           # Clean up
           rm -rf ./test-export-stage ./test-export-prod-debug
 
       - name: Test CLI error handling
         run: |
           echo "Testing error handling..."
-          
+
           # Test invalid commands
           node $GITHUB_WORKSPACE/packages/cli/dist/cli.js invalid-command 2>&1 | grep -q "Unknown command" || echo "Invalid command error handling test completed"
-          
+
           # Test missing arguments
           node $GITHUB_WORKSPACE/packages/cli/dist/cli.js build 2>&1 | grep -q "No tag provided" || echo "Missing arguments error handling test completed"
-          
+
           # Test invalid profile
           node $GITHUB_WORKSPACE/packages/cli/dist/cli.js build invalid 2>&1 | grep -q "Error" || echo "Invalid profile error handling test completed"

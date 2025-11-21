@@ -52,7 +52,6 @@ prod-debug   - Verifiable RISC-V with debug tools
 • SSH keys are auto-generated for debug profiles
 • All builds (based on same built Docker image) are deterministic and reproducible
 • Your HTTP server should expose a /health endpoint
-• Same container can deploy to TEE or LaneLayer
 
 🔧 Common Commands
 ==================
