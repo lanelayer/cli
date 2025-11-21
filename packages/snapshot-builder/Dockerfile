@@ -1,6 +1,6 @@
-# Pull vcr-kernels image if not available locally
+# Pull lane-kernels image if not available locally
 
-FROM --platform=linux/amd64 ghcr.io/zippiehq/vcr-kernels@sha256:135f1c813a2c03371b90649ce0cb7f9085a3abad2237ef84110013e82c6a48a9 as kernels
+FROM --platform=linux/amd64 ghcr.io/lanelayer/lane-kernels@sha256:135f1c813a2c03371b90649ce0cb7f9085a3abad2237ef84110013e82c6a48a9 as kernels
 
 FROM golang:1.23 as linuxkit-builder
 
@@ -44,15 +44,15 @@ FROM ubuntu:24.04
 # Install required packages
 RUN apt-get update && \
     apt-get install --no-install-recommends -y \
-    	procps \
-        lua5.4 \
-        libslirp0 \
-        squashfs-tools \
-        cryptsetup \
-        wget \
-        curl \
-        openssh-client ipxe-qemu qemu-system-data \
-        ca-certificates socat && \
+    procps \
+    lua5.4 \
+    libslirp0 \
+    squashfs-tools \
+    cryptsetup \
+    wget \
+    curl \
+    openssh-client ipxe-qemu qemu-system-data \
+    ca-certificates socat && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=qemu-builder /usr/bin/qemu-system-riscv64 /usr/bin/qemu-system-riscv64
