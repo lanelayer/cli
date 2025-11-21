@@ -386,7 +386,7 @@ export function handlePushCommand(args: string[]): void {
   }
 
   console.log(
-    `🚀 Building and pushing prod (RISC-V) container to: ${resolvedRegistryPath}`
+    `🚀 Building and pushing prod container to: ${resolvedRegistryPath}`
   );
 
   // For pushing to registry, we need to build with docker output instead of OCI tar
@@ -590,7 +590,7 @@ export function handlePushCommand(args: string[]): void {
   }
 
   console.log(
-    `\n🎉 Successfully built and pushed RISC-V container to: ${registryPath}`
+    `\n🎉 Successfully built and pushed container to: ${registryPath}`
   );
   console.log(
     `📦 Build artifacts cached in: ${cacheDir || "default cache directory"}`

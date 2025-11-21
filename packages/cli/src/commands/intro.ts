@@ -22,9 +22,9 @@ LaneLayer handles the complexity behind the scenes - you just write standard HTT
    lane create myapp --template python
 
 2. Build and run (choose your profile):
-   lane up dev          # Fast development (native platform)
-   lane up stage        # RISC-V testing with debug tools
-   lane up prod         # Verifiable RISC-V (Cartesi Machine)
+   lane up dev          # Fast development (recommended to start)
+   lane up stage        # Testing environment with debug tools
+   lane up prod         # Production-ready verifiable environment
 
 3. Interact with your app:
    lane logs            # View application logs
@@ -37,18 +37,18 @@ LaneLayer handles the complexity behind the scenes - you just write standard HTT
 🎯 Profile Guide
 ================
 
-dev          - Native platform, fastest development
-stage        - RISC-V QEMU with debug tools (SSH access)
-stage-release- RISC-V QEMU without debug tools
-prod         - Verifiable RISC-V Cartesi Machine
-prod-debug   - Verifiable RISC-V with debug tools
+dev          - Fastest development (native platform)
+stage        - Testing environment with debug tools (SSH access)
+stage-release- Testing environment without debug tools
+prod         - Production-ready verifiable environment
+prod-debug   - Production environment with debug tools
 
 💡 Pro Tips
 ===========
 
 • Start with 'dev' for fast iteration
-• Use 'stage' to test RISC-V compatibility  
-• Use 'prod' for verifiable, attested builds
+• Use 'stage' to test your application in a production-like environment
+• Use 'prod' for production-ready builds
 • SSH keys are auto-generated for debug profiles
 • All builds (based on same built Docker image) are deterministic and reproducible
 • Your HTTP server should expose a /health endpoint

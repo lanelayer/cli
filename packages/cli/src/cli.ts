@@ -95,18 +95,18 @@ Build and run HTTP server containers for payments and intent execution.
   🎼 lane perf <subcommand> [args]        Run Linux perf tool in stage/prod-debug
 
 🎯 Profiles:
-  🚀 dev          - Native platform, fastest development
-  🧪 stage        - RISC-V QEMU with debug tools (⚡ ~2.3x faster than prod)
-  🔒 stage-release- RISC-V QEMU without debug tools
-  🔐 prod         - Verifiable RISC-V Cartesi Machine (🐢 ~2.3x slower than stage)
-  🐛 prod-debug   - Verifiable RISC-V with debug tools
+  🚀 dev          - Fastest development (native platform)
+  🧪 stage        - Testing environment with debug tools (⚡ ~2.3x faster than prod)
+  🔒 stage-release- Testing environment without debug tools
+  🔐 prod         - Production-ready verifiable environment (🐢 ~2.3x slower than stage)
+  🐛 prod-debug   - Production environment with debug tools
 
 💡 Quick Start:
   lane intro                              # Get started guide
   lane create myapp --template python     # New HTTP server project
   lane up dev                             # Build and run (fastest)
-  lane up stage                           # Build and run (RISC-V testing)
-  lane up prod                            # Build and run (verifiable)
+  lane up stage                           # Build and run (testing environment)
+  lane up prod                            # Build and run (production-ready)
 
 📚 For detailed help: lane <command> --help
 `);

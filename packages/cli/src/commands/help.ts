@@ -53,11 +53,11 @@ Build container images for different profiles without running them.
   lane build <profile> [options]
 
 🎯 Profiles:
-  🚀 dev          - Native platform, fastest development
-  🧪 stage        - RISC-V QEMU with debug tools (⚡ ~2.3x faster than prod)
-  🔒 stage-release- RISC-V QEMU without debug tools
-  🔐 prod         - Verifiable RISC-V Cartesi Machine (🐢 ~2.3x slower than stage)
-  🐛 prod-debug   - Verifiable RISC-V with debug tools
+  🚀 dev          - Fastest development (native platform)
+  🧪 stage        - Testing environment with debug tools (⚡ ~2.3x faster than prod)
+  🔒 stage-release- Testing environment without debug tools
+  🔐 prod         - Production-ready verifiable environment (🐢 ~2.3x slower than stage)
+  🐛 prod-debug   - Production environment with debug tools
 
 ⚙️  Options:
   🏷️  -t, --tag <name:tag>                Custom image tag
@@ -67,25 +67,24 @@ Build container images for different profiles without running them.
   🚫 --no-depot                           Disable depot build (use docker buildx)
   🚫 --no-tar-context                    Disable deterministic tar context
   🐳 --force-docker-tar                  Force using Docker for tar creation
-  ⚡ --turbo                              Enable multi-core QEMU (stage profiles only)
+  ⚡ --turbo                              Enable faster emulation (stage profiles only)
   🤖 --guest-agent-image <image>         Custom guest agent image (prod/prod-debug only)
   🔥 --hot                               Enable hot reload (incompatible with --image)
   📁 --cache-dir <path>                  Custom cache directory
 
 💡 Examples:
   lane build dev                          # Build for fast development
-  lane build stage                        # Build for RISC-V testing
-  lane build prod                         # Build verifiable RISC-V image
+  lane build stage                        # Build for testing environment
+  lane build prod                         # Build production-ready image
   lane build stage --image myapp:latest   # Use existing image
   lane build prod --guest-agent-image my-registry/guest-agent:v2
   lane build dev --hot                    # Build with hot reload support
-  lane build stage --turbo                # Build with multi-core QEMU
+  lane build stage --turbo                # Build with faster emulation
   lane build prod --depot                 # Use depot for faster builds
 
 🔧 Notes:
   • --image and --hot are incompatible
-  • For stage/prod profiles, --image uses direct image reference in LinuxKit YAML
-  • --turbo only affects stage profiles (multi-core QEMU)
+  • --turbo only affects stage profiles (faster emulation)
   • --guest-agent-image only affects prod/prod-debug profiles
 `);
 }
@@ -101,11 +100,11 @@ Build container images and start the development environment.
   lane up <profile> [options]
 
 🎯 Profiles:
-  🚀 dev          - Native platform, fastest development
-  🧪 stage        - RISC-V QEMU with debug tools (⚡ ~2.3x faster than prod)
-  🔒 stage-release- RISC-V QEMU without debug tools
-  🔐 prod         - Verifiable RISC-V Cartesi Machine (🐢 ~2.3x slower than stage)
-  🐛 prod-debug   - Verifiable RISC-V with debug tools
+  🚀 dev          - Fastest development (native platform)
+  🧪 stage        - Testing environment with debug tools (⚡ ~2.3x faster than prod)
+  🔒 stage-release- Testing environment without debug tools
+  🔐 prod         - Production-ready verifiable environment (🐢 ~2.3x slower than stage)
+  🐛 prod-debug   - Production environment with debug tools
 
 ⚙️  Options:
   🏷️  -t, --tag <name:tag>                Custom image tag
@@ -116,26 +115,25 @@ Build container images and start the development environment.
   🚫 --no-depot                           Disable depot build (use docker buildx)
   🚫 --no-tar-context                    Disable deterministic tar context
   🐳 --force-docker-tar                  Force using Docker for tar creation
-  ⚡ --turbo                              Enable multi-core QEMU (stage profiles only)
+  ⚡ --turbo                              Enable faster emulation (stage profiles only)
   🤖 --guest-agent-image <image>         Custom guest agent image (prod/prod-debug only)
   🔥 --hot                               Enable hot reload (incompatible with --image)
   📁 --cache-dir <path>                  Custom cache directory
 
 💡 Examples:
   lane up dev                             # Build and run (fastest)
-  lane up stage                           # Build and run (RISC-V testing)
-  lane up prod                            # Build and run (verifiable)
+  lane up stage                           # Build and run (testing environment)
+  lane up prod                            # Build and run (production-ready)
   lane up stage --image myapp:latest      # Use existing image
   lane up prod --guest-agent-image my-registry/guest-agent:v2
   lane up dev --hot                       # Hot reload (file watching)
   lane up stage --hot                     # Hot reload (rebuild on changes)
-  lane up stage --turbo                   # Multi-core QEMU for faster emulation
+  lane up stage --turbo                   # Faster emulation
   lane up dev --restart                   # Force restart environment
 
 🔧 Notes:
   • --image and --hot are incompatible
-  • For stage/prod profiles, --image uses direct image reference in LinuxKit YAML
-  • --turbo only affects stage profiles (multi-core QEMU)
+  • --turbo only affects stage profiles (faster emulation)
   • --guest-agent-image only affects prod/prod-debug profiles
   • Hot reload behavior varies by profile (file watching vs rebuild)
 `);

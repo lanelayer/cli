@@ -1380,22 +1380,20 @@ export function buildImage(
     // Warn about turbo flag performance characteristics
     if (turbo && (profile === "stage" || profile === "stage-release")) {
       console.log(
-        "\n⚠️  Performance Note: --turbo flag enabled multi-core QEMU emulation"
+        "\n⚠️  Performance Note: --turbo flag enabled faster emulation"
       );
       console.log(
         "   This provides faster development experience but performance will NOT"
       );
-      console.log("   be representative of production (Cartesi Machine)");
+      console.log("   be representative of production");
     }
 
     // Performance note for stage profiles without turbo
     if (!turbo && (profile === "stage" || profile === "stage-release")) {
       console.log(
-        "\n💡 Performance Note: Using QEMU emulation (faster than Cartesi Machine)"
+        "\n💡 Performance Note: Using testing environment (faster than production)"
       );
-      console.log(
-        "   This provides good RISC-V testing but is NOT reproducible"
-      );
+      console.log("   This provides good testing but is NOT reproducible");
       console.log(
         "   For production performance and reproducibility, use the prod profile"
       );
@@ -1682,22 +1680,20 @@ export function runDevEnvironment(
     // Warn about turbo flag performance characteristics
     if (turbo && (profile === "stage" || profile === "stage-release")) {
       console.log(
-        "\n⚠️  Performance Note: --turbo flag enabled multi-core QEMU emulation"
+        "\n⚠️  Performance Note: --turbo flag enabled faster emulation"
       );
       console.log(
         "   This provides faster development experience but performance will NOT"
       );
-      console.log("   be representative of production (Cartesi Machine)");
+      console.log("   be representative of production");
     }
 
     // Performance note for stage profiles without turbo
     if (!turbo && (profile === "stage" || profile === "stage-release")) {
       console.log(
-        "\n💡 Performance Note: Using QEMU emulation (faster than Cartesi Machine)"
+        "\n💡 Performance Note: Using testing environment (faster than production)"
       );
-      console.log(
-        "   This provides good RISC-V testing but is NOT reproducible"
-      );
+      console.log("   This provides good testing but is NOT reproducible");
       console.log(
         "   For production performance and reproducibility, use the prod profile"
       );

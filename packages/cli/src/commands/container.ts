@@ -262,7 +262,7 @@ export function handleShellCommand(args: string[]): void {
         ) {
           // This is a stage or prod profile - exec into container then SSH
           console.log(
-            "Detected stage/prod profile (system mode) - connecting to RISC-V VM..."
+            "Detected stage/prod profile (system mode) - connecting to container..."
           );
           console.log('Type "exit" to return to your host shell');
 
