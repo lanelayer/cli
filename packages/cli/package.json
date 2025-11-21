@@ -1,7 +1,7 @@
 {
   "name": "@lanelayer/cli",
-  "version": "0.2.8",
-  "description": "LaneLayer CLI - Verifiable Container Runner",
+  "version": "0.3.0",
+  "description": "LaneLayer CLI - Build and run HTTP server containers for payments and intent execution",
   "bin": {
     "lane": "dist/cli.js"
   },
@@ -11,6 +11,14 @@
   },
   "author": "LaneLayer",
   "license": "Unlicensed",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lanelayer/cli.git"
+  },
+  "homepage": "https://github.com/lanelayer/cli#readme",
+  "bugs": {
+    "url": "https://github.com/lanelayer/cli/issues"
+  },
   "dependencies": {},
   "devDependencies": {
     "typescript": "^5.0.0",

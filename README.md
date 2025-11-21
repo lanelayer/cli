@@ -1,6 +1,6 @@
-# VCR - Verifiable Container Runner
+# LaneLayer CLI
 
-Build and run **verifiable, deterministic containers** with RISC-V support and attestation.
+Build and run **HTTP server containers** for payments and intent execution on LaneLayer.
 
 ## ⚠️ Development Status
 
@@ -14,28 +14,28 @@ Currently unlicensed.
 
 ```bash
 # Install
-npm install -g @zippie/vcr
+npm install -g @lanelayer/cli
 
 # Create and run
-vcr create myapp --template python
+lane create myapp --template python
 cd myapp
-vcr up dev --hot
+lane up dev
 ```
 
 ## 📚 Documentation
 
 - **[Quick Start & Profiles](docs/README.md)** - Get up and running fast
-- **[Workflow Guide](docs/workflow.md)** - Detailed development process  
+- **[Workflow Guide](docs/workflow.md)** - Detailed development process
 - **[CLI Reference](docs/reference.md)** - Complete command reference
 - **[Advanced Topics](docs/advanced.md)** - Power user features
 
 ## 🏗️ Build Profiles
 
 - **`dev`** - Native platform, fastest development
-- **`stage`** - RISC-V QEMU with debug tools  
-- **`stage-release`** - RISC-V QEMU without debug tools
-- **`prod`** - Verifiable RISC-V Cartesi Machine
-- **`prod-debug`** - Verifiable RISC-V with debug tools
+- **`stage`** - Testing environment with debug tools
+- **`stage-release`** - Testing environment without debug tools
+- **`prod`** - Production-ready verifiable environment
+- **`prod-debug`** - Production environment with debug tools
 
 ## 📦 Prerequisites
 
@@ -44,6 +44,6 @@ vcr up dev --hot
 
 ---
 
-**That's it!** VCR handles the complexity of building verifiable, deterministic containers.
+**That's it!** LaneLayer handles the complexity - you just write standard HTTP servers.
 
-**Need help?** Check the [documentation](docs/README.md) or run `vcr --help`. 
+**Need help?** Check the [documentation](docs/README.md) or run `lane --help`.
