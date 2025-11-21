@@ -8,7 +8,7 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+"
   pull_request:
     branches:
-      - '*'
+      - "*"
 
 permissions:
   id-token: write
@@ -31,16 +31,16 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/zippiehq/vcr-kernels
-            ghcr.io/zippiehq/vcr-snapshot-builder
+            ghcr.io/lanelayer/lane-kernels
+            ghcr.io/lanelayer/lane-snapshot-builder
           tags: |
             type=semver,pattern={{version}}
             type=ref,event=pr
             type=raw,value=testing,enable=${{ github.ref == format('refs/heads/{0}', 'testing') }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
           labels: |
-            org.opencontainers.image.title=VCR Docker Images
-            org.opencontainers.image.description=Verifiable Container Runner Docker Images
+            org.opencontainers.image.title=LaneLayer Docker Images
+            org.opencontainers.image.description=LaneLayer Container Development Platform Docker Images
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -57,27 +57,27 @@ jobs:
         env:
           DEPOT_TOKEN: ${{ secrets.DEPOT_API_TOKEN }}
 
-      - name: vcr-kernels Build and Push Docker Images with Depot
+      - name: lane-kernels Build and Push Docker Images with Depot
         uses: depot/bake-action@v1
         if: ${{!startsWith(github.ref, 'refs/tags/') }}
         with:
           project: ${{ secrets.DEPOT_PROJECT_ID }}
           token: ${{ secrets.DEPOT_API_TOKEN }}
-          targets: vcr-kernels
+          targets: lane-kernels
           files: |
             ./docker-bake.hcl
             ./docker-bake.platforms.hcl
             ${{ steps.meta.outputs.bake-file }}
-          push: true 
+          push: true
       - name: Build and Push Docker Images with Depot
         uses: depot/bake-action@v1
         if: ${{!startsWith(github.ref, 'refs/tags/') }}
         with:
           project: ${{ secrets.DEPOT_PROJECT_ID }}
           token: ${{ secrets.DEPOT_API_TOKEN }}
-          targets: vcr-kernels,snapshot-builder,guest-agent
+          targets: lane-kernels,snapshot-builder,guest-agent
           files: |
             ./docker-bake.hcl
             ./docker-bake.platforms.hcl
             ${{ steps.meta.outputs.bake-file }}
-          push: true 
+          push: true
