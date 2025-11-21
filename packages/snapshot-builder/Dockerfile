@@ -1,8 +1,6 @@
 # Pull lane-kernels image if not available locally
-# TODO: Update to use digest after new image is built and pushed
-# Get digest with: docker pull ghcr.io/lanelayer/lane-kernels:latest && docker inspect ghcr.io/lanelayer/lane-kernels:latest | grep RepoDigests
 
-FROM --platform=linux/amd64 ghcr.io/lanelayer/lane-kernels:latest as kernels
+FROM --platform=linux/amd64 ghcr.io/lanelayer/lane-kernels@sha256:731daea683ac47d27ceeda965320b9e018c62bd225487e1f6ab4be4413d6969d as kernels
 
 FROM golang:1.23 as linuxkit-builder
 
