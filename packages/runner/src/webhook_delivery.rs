@@ -1,5 +1,5 @@
 use crate::http_client::make_http_post_request;
-use crate::utils::RunnerState;
+use crate::utils::{RunnerState, Service};
 use log::{info, error};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -186,11 +186,10 @@ impl WebhookServer {
         }
         None
     }
-
 }
-                // Return 200 OK response
-                let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\n\r\n{\"status\":\"ok\"}";
-                return Some(response.as_bytes().to_vec());
+
+impl Service for WebhookServer {
+    fn on_connection(&mut self, port: u32) {
         info!("Webhook server received new connection on port {}", port);
         let connection = WebhookServerConnection::new(port);
         self.connections.insert(port, connection);
