@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut state_guard = state.lock().await;
         add_http_server(&mut state_guard);
         add_http_health_check_client(&mut state_guard, 9000, 10); // HTTP health check client on port 9000 with 10 max retries
-        let sub_rx = add_webhook_server(&mut state_guard, 9001); // Webhook server on port 9001
+        let sub_rx = add_webhook_server(&mut state_guard, 9001, None); // Webhook server on port 9001
         
         // Add HTTP client for webhook delivery
         add_http_client(&mut state_guard, 9002); // HTTP client on port 9002 for forwarding webhooks

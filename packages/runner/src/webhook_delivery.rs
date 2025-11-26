@@ -76,7 +76,9 @@ impl WebhookDeliveryService {
             &self.target_host,
             &body,
             content_type,
-        )?;
+        ).map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+            e.to_string().into()
+        })?;
 
         Ok(())
     }
@@ -92,15 +94,13 @@ pub struct WebhookServer {
 }
 
 struct WebhookServerConnection {
-    port: u32,
     buffer: Vec<u8>,
     request_complete: bool,
 }
 
 impl WebhookServerConnection {
-    fn new(port: u32) -> Self {
+    fn new() -> Self {
         Self {
-            port,
             buffer: Vec::new(),
             request_complete: false,
         }
@@ -116,6 +116,32 @@ impl WebhookServer {
             pending_responses: HashMap::new(),
             submission_sender,
         }
+    }
+
+    /// Parse Content-Length header from HTTP request headers
+    /// Returns the content length, or 0 if missing/invalid
+    /// Handles case-insensitive header names and whitespace around the colon
+    fn parse_content_length(&self, headers: &str) -> usize {
+        // Search for Content-Length header case-insensitively
+        for line in headers.lines() {
+            // Handle both \r\n and \n line endings
+            let line = line.trim_end_matches('\r').trim();
+            if line.is_empty() {
+                continue;
+            }
+            
+            // Case-insensitive search for "Content-Length"
+            if let Some(colon_pos) = line.find(':') {
+                let header_name = &line[..colon_pos].trim();
+                if header_name.eq_ignore_ascii_case("Content-Length") {
+                    // Extract the value after the colon
+                    let value = line[colon_pos + 1..].trim();
+                    // Parse as usize, defaulting to 0 on error
+                    return value.parse::<usize>().unwrap_or(0);
+                }
+            }
+        }
+        0
     }
 
     pub fn handle_webhook_request(&mut self, data: &[u8]) -> Option<Vec<u8>> {
@@ -158,7 +184,7 @@ impl WebhookServer {
                 }
                 
                 // Return 200 OK response
-                let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 17\r\n\r\n{\"status\":\"ok\"}";
+                let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\n\r\n{\"status\":\"ok\"}";
                 return Some(response.as_bytes().to_vec());
             }
         }
@@ -191,7 +217,7 @@ impl WebhookServer {
 impl Service for WebhookServer {
     fn on_connection(&mut self, port: u32) {
         info!("Webhook server received new connection on port {}", port);
-        let connection = WebhookServerConnection::new(port);
+        let connection = WebhookServerConnection::new();
         self.connections.insert(port, connection);
     }
 
@@ -202,24 +228,40 @@ impl Service for WebhookServer {
             connection.buffer.extend_from_slice(data);
 
             // Check if we have a complete HTTP request
-            let buffer_str = String::from_utf8_lossy(&connection.buffer);
-            if buffer_str.contains("\r\n\r\n") && !connection.request_complete {
-                connection.request_complete = true;
+            if !connection.request_complete {
+                let buffer_str = String::from_utf8_lossy(&connection.buffer);
+                
+                // Find the header end (end of headers, start of body)
+                if let Some(header_end) = buffer_str.find("\r\n\r\n") {
+                    let header_block = &buffer_str[..header_end];
+                    let body_start = header_end + 4;
+                    
+                    // Parse Content-Length header
+                    let content_length = self.parse_content_length(header_block);
+                    
+                    // Calculate expected total request length
+                    let expected_length = body_start + content_length;
+                    
+                    // Only mark as complete when we have the full request (headers + body)
+                    if connection.buffer.len() >= expected_length {
+                        connection.request_complete = true;
 
-                // Extract submission and send it for forwarding
-                if let Some(submission) = self.extract_submission(&connection.buffer) {
-                    if let Some(ref sender) = self.submission_sender {
-                        if let Err(e) = sender.try_send(submission) {
-                            error!("Failed to send submission for forwarding: {}", e);
+                        // Extract submission and send it for forwarding
+                        if let Some(submission) = self.extract_submission(&connection.buffer) {
+                            if let Some(ref sender) = self.submission_sender {
+                                if let Err(e) = sender.try_send(submission) {
+                                    error!("Failed to send submission for forwarding: {}", e);
+                                }
+                            }
+                        }
+
+                        // Process the request
+                        let response = self.handle_webhook_request(&connection.buffer);
+
+                        if let Some(response_data) = response {
+                            self.pending_responses.insert(port, response_data);
                         }
                     }
-                }
-
-                // Process the request
-                let response = self.handle_webhook_request(&connection.buffer);
-
-                if let Some(response_data) = response {
-                    self.pending_responses.insert(port, response_data);
                 }
             }
         }
@@ -256,9 +298,19 @@ impl Service for WebhookServer {
 }
 
 /// Helper function to create and add a webhook server to the runner state
-pub fn add_webhook_server(state: &mut RunnerState, port: u32) -> mpsc::Receiver<Submission> {
+pub fn add_webhook_server(
+    state: &mut RunnerState,
+    port: u32,
+    event_sender: Option<mpsc::Sender<Submission>>,
+) -> mpsc::Receiver<Submission> {
     let (submission_tx, submission_rx) = mpsc::channel(100);
-    let webhook_server = WebhookServer::new(port, Some(submission_tx));
+    // Use the provided event_sender if available, otherwise use the newly created sender
+    let sender_to_use = if let Some(sender) = event_sender {
+        sender
+    } else {
+        submission_tx
+    };
+    let webhook_server = WebhookServer::new(port, Some(sender_to_use));
     state.add_listener(port, Box::new(webhook_server));
     info!("Webhook server added to runner state on port {}", port);
     submission_rx

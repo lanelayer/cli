@@ -295,19 +295,23 @@ pub fn make_http_post_request(
     content_type: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Queue the POST request metadata in the client
-    if let Some(client) = state.get_client(client_port) {
-        client.queue_post_request(
-            client_port,
-            path.to_string(),
-            host.to_string(),
-            body.to_vec(),
-            content_type.to_string(),
-        );
-        info!(
-            "HTTP POST request {} to {}:{} queued",
-            path, target_cid, target_port
-        );
-    }
+    let client = state.get_client(client_port).ok_or_else(|| {
+        let error_msg = format!("No HTTP client found for port {}", client_port);
+        error!("{}", error_msg);
+        Box::<dyn std::error::Error>::from(error_msg)
+    })?;
+    
+    client.queue_post_request(
+        client_port,
+        path.to_string(),
+        host.to_string(),
+        body.to_vec(),
+        content_type.to_string(),
+    );
+    info!(
+        "HTTP POST request {} to {}:{} queued",
+        path, target_cid, target_port
+    );
 
     // Initiate the connection
     state.initiate_connection(client_port, target_cid, target_port)?;
