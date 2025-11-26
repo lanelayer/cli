@@ -1,152 +1,104 @@
 # Webhooks Guide
 
-LaneLayer containers can receive events from the Bitcoin network and LaneLayer infrastructure via HTTP webhooks. This enables event-driven applications that react to payments, transaction confirmations, and intent submissions.
+LaneLayer containers receive transaction and intent submissions from core-lane via a single `/submit` endpoint. Containers query lane state to check payment status, confirmations, and process submissions accordingly.
 
 ## Overview
 
-Webhooks are delivered as HTTP POST requests directly from core-lane to your container on specific endpoints. The container automatically discovers webhook endpoints via path convention (`/webhook/*`). Containers can also query lane state using the `CORE_LANE_URL` environment variable.
+When a transaction or intent is submitted to core-lane, core-lane calls your container's `/submit` endpoint with comprehensive submission data. Your container then queries lane state using the `CORE_LANE_URL` environment variable to check payment status, confirmations, and other relevant information before processing.
 
-## Event Types
+## Submission Endpoint
 
-### Payment Received
+### Endpoint
 
-Triggered when a payment is detected on the blockchain.
+**`POST /submit`**
 
-**Endpoint:** `POST /webhook/payment`
+Core-lane calls this endpoint when transactions or intents are submitted.
 
-**Event Schema:**
-
-```json
-{
-  "event": "payment.received",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "data": {
-    "tx_hash": "abc123def456...",
-    "amount": 1000000,
-    "sender": "bc1...",
-    "confirmations": 0,
-    "block_height": null
-  }
-}
-```
-
-**Example Handler (Python):**
-
-```python
-async def webhook_payment(request):
-    data = await request.json()
-    payment_data = data.get('data', {})
-    tx_hash = payment_data.get('tx_hash')
-    amount = payment_data.get('amount')
-    sender = payment_data.get('sender')
-
-    # Process payment
-    process_payment(tx_hash, amount, sender)
-
-    return web.json_response({'status': 'ok'}, status=200)
-```
-
-### Transaction Confirmed
-
-Triggered when a transaction receives confirmations.
-
-**Endpoint:** `POST /webhook/confirmation`
-
-**Event Schema:**
+### Request Schema
 
 ```json
 {
-  "event": "transaction.confirmed",
-  "timestamp": "2024-01-15T10:35:00Z",
-  "data": {
-    "tx_hash": "abc123def456...",
-    "block_height": 850000,
-    "confirmations": 1,
-    "block_hash": "def789..."
-  }
-}
-```
-
-**Example Handler (Python):**
-
-```python
-async def webhook_confirmation(request):
-    data = await request.json()
-    tx_data = data.get('data', {})
-    tx_hash = tx_data.get('tx_hash')
-    confirmations = tx_data.get('confirmations')
-
-    # Update transaction status
-    update_transaction_status(tx_hash, confirmations)
-
-    return web.json_response({'status': 'ok'}, status=200)
-```
-
-### Intent Submitted
-
-Triggered when a user submits an intent.
-
-**Endpoint:** `POST /webhook/intent`
-
-**Event Schema:**
-
-```json
-{
-  "event": "intent.submitted",
+  "tx_hash": "abc123def456...",
+  "intent_id": "intent_123",
+  "user": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+  "action": "purchase",
+  "params": {
+    "item_id": "item_456",
+    "quantity": 2
+  },
   "timestamp": "2024-01-15T10:40:00Z",
-  "data": {
-    "intent_id": "intent_123",
-    "user": "bc1...",
-    "action": "purchase",
-    "params": {
-      "item_id": "item_456",
-      "quantity": 2
-    }
-  }
+  "block_height": 850000,
+  "confirmations": 1
 }
 ```
 
-**Example Handler (Python):**
+**Fields:**
 
-```python
-async def webhook_intent(request):
-    data = await request.json()
-    intent_data = data.get('data', {})
-    intent_id = intent_data.get('intent_id')
-    user = intent_data.get('user')
-    action = intent_data.get('action')
+- `tx_hash` (string, optional) - Transaction hash
+- `intent_id` (string, optional) - Intent identifier
+- `user` (string) - User address
+- `action` (string) - Action type (e.g., "purchase", "transfer")
+- `params` (object, optional) - Action-specific parameters
+- `timestamp` (string) - ISO 8601 timestamp
+- `block_height` (number, optional) - Block height if confirmed
+- `confirmations` (number, optional) - Number of confirmations
 
-    # Process intent
-    process_intent(intent_id, user, action)
-
-    return web.json_response({'status': 'ok'}, status=200)
-```
-
-## Endpoint Discovery
-
-Webhook endpoints are automatically discovered via path convention. Any route starting with `/webhook/` will be registered as a webhook endpoint.
-
-**Supported patterns:**
-
-- `/webhook/payment` - Payment events
-- `/webhook/confirmation` - Transaction confirmation events
-- `/webhook/intent` - Intent submission events
-- `/webhook/*` - Custom webhook endpoints
-
-## Reading Lane State
-
-Containers can read the state of lanes they're sitting on top of using core-lane RPC. This is useful for verifying payments and checking intent status.
-
-**Example: Checking Intent Payment Status**
+### Example Handler
 
 ```python
 import aiohttp
+from aiohttp import web
 import os
+import json
 
-async def check_intent_payment(intent_id: str) -> dict:
-    """Check if payment was made for an intent"""
-    core_lane_url = os.environ.get('CORE_LANE_URL', 'http://core-lane:8545')
+async def submit_handler(request):
+    """Handle transaction/intent submissions"""
+    data = await request.json()
 
+    tx_hash = data.get("tx_hash")
+    intent_id = data.get("intent_id")
+    user = data.get("user")
+    action = data.get("action")
+
+    # Get core-lane URL from environment
+    core_lane_url = os.environ.get("CORE_LANE_URL", "http://core-lane:8545")
+
+    # Query lane state to check payment status
+    if intent_id:
+        intent_state = await check_intent_payment(intent_id, core_lane_url)
+        payment_made = intent_state.get("payment_made", False)
+
+        if payment_made:
+            # Process the payment
+            process_payment(intent_id, user, action)
+        else:
+            # Payment not yet made
+            handle_pending_payment(intent_id)
+
+    if tx_hash:
+        # Check transaction state
+        tx_state = await check_transaction_state(tx_hash, core_lane_url)
+        confirmations = tx_state.get("confirmations", 0)
+
+        if confirmations >= 1:
+            # Transaction confirmed, process it
+            process_transaction(tx_hash, tx_state)
+
+    return web.json_response({
+        "status": "ok",
+        "message": "Submission processed"
+    }, status=200)
+```
+
+## Querying Lane State
+
+Containers automatically receive the `CORE_LANE_URL` environment variable (default: `http://core-lane:8545`) to query lane state.
+
+### Check Intent Payment Status
+
+```python
+async def check_intent_payment(intent_id: str, core_lane_url: str) -> dict:
+    """Query lane state to check if payment was made for an intent"""
     async with aiohttp.ClientSession() as session:
         payload = {
             "jsonrpc": "2.0",
@@ -161,11 +113,45 @@ async def check_intent_payment(intent_id: str) -> dict:
         ) as response:
             if response.status == 200:
                 result = await response.json()
-                return result.get('result', {})
+                return result.get("result", {})
     return {}
 ```
 
-**Environment Variables:**
+### Check Transaction State
+
+```python
+async def check_transaction_state(tx_hash: str, core_lane_url: str) -> dict:
+    """Query lane state to check transaction details"""
+    async with aiohttp.ClientSession() as session:
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "lane_getTransactionState",
+            "params": [tx_hash],
+            "id": 1
+        }
+        async with session.post(
+            f"{core_lane_url}/",
+            json=payload,
+            headers={"Content-Type": "application/json"}
+        ) as response:
+            if response.status == 200:
+                result = await response.json()
+                return result.get("result", {})
+    return {}
+```
+
+## Processing Flow
+
+1. **Receive Submission**: Core-lane POSTs to `/submit` with transaction/intent data
+2. **Query State**: Container queries lane state via `CORE_LANE_URL` to check:
+   - Payment status for intents
+   - Transaction confirmations
+   - Block height
+   - Other relevant state
+3. **Process**: Container processes based on state query results
+4. **Respond**: Return success/error response
+
+## Environment Variables
 
 - `CORE_LANE_URL` - URL of core-lane RPC endpoint (automatically set by CLI, default: `http://core-lane:8545`)
 
@@ -173,24 +159,21 @@ This environment variable is automatically provided to containers, allowing them
 
 ## Local Testing
 
-For local development, you can test webhooks by sending HTTP POST requests directly to your container.
+For local development, you can test the submission endpoint by sending HTTP POST requests directly to your container.
 
-### Quick Test with curl
+### Quick Test
 
 ```bash
-# Test payment webhook
-curl -X POST http://localhost:8080/webhook/payment \
+# Test submission with intent
+curl -X POST http://localhost:8080/submit \
   -H "Content-Type: application/json" \
   -d '{
-    "event": "payment.received",
-    "timestamp": "2024-01-15T10:30:00Z",
-    "data": {
-      "tx_hash": "abc123def456...",
-      "amount": 1000000,
-      "sender": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-      "confirmations": 0,
-      "block_height": null
-    }
+    "tx_hash": "abc123",
+    "intent_id": "intent_123",
+    "user": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+    "action": "purchase",
+    "params": {"item_id": "item_456", "quantity": 2},
+    "timestamp": "2024-01-15T10:40:00Z"
   }'
 ```
 
@@ -208,28 +191,43 @@ lane up dev
 
 ### Viewing Logs
 
-To see webhook events being processed:
+To see submissions being processed:
 
 ```bash
 lane logs --follow
 ```
 
-For detailed testing instructions, see [Testing Webhooks Guide](testing-webhooks.md).
-
 ## Complete Example
 
-See `packages/sample-python/app.py` for a complete example with all webhook handlers and lane state reading.
+See `packages/sample-python/app.py` for a complete example with:
+
+- `/submit` endpoint handler
+- Lane state querying functions
+- Payment verification logic
+- Error handling
 
 ## Best Practices
 
-1. **Idempotency**: Webhooks may be delivered multiple times. Make your handlers idempotent.
-2. **Error Handling**: Always return appropriate HTTP status codes and handle errors gracefully.
-3. **Verification**: Verify payments by reading lane state before processing.
-4. **Logging**: Log all webhook events for debugging and auditing.
+1. **Always Query State**: Don't rely solely on submission data - query lane state to verify payment status
+2. **Idempotency**: Submissions may be delivered multiple times. Make your handler idempotent.
+3. **Error Handling**: Always handle errors gracefully and return appropriate HTTP status codes
+4. **Logging**: Log all submissions and state queries for debugging and auditing
+5. **Validation**: Validate submission data before processing
 
-## Future Enhancements
+## Troubleshooting
 
-- Webhook authentication (signatures, API keys)
-- Retry logic and delivery guarantees
-- Webhook endpoint configuration file
-- Event filtering and routing
+### Container Not Receiving Submissions
+
+1. Check container is running: `docker ps`
+2. Verify endpoint exists: `curl http://localhost:8080/health`
+3. Test submission endpoint: `curl -X POST http://localhost:8080/submit -H "Content-Type: application/json" -d '{"test": "data"}'`
+
+### State Queries Failing
+
+1. Verify `CORE_LANE_URL` is set: `docker exec <container> env | grep CORE_LANE_URL`
+2. Check core-lane is accessible from container
+3. Verify RPC method names match core-lane API
+
+### Wrong Response Format
+
+Make sure your submission payload matches the expected schema. All fields except `tx_hash` and `intent_id` are optional, but at least one should be present.

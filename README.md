@@ -47,23 +47,23 @@ lane up dev
 
 **That's it!** LaneLayer handles the complexity - you just write standard HTTP servers.
 
-## 🔔 Webhooks
+## 🔔 Submissions
 
-Containers can receive events via HTTP webhooks:
+Containers receive transaction and intent submissions via a single endpoint:
 
-- Payment notifications (`/webhook/payment`)
-- Transaction confirmations (`/webhook/confirmation`)
-- Intent submissions (`/webhook/intent`)
+- **`POST /submit`** - Receives submissions from core-lane
+
+Containers query lane state using `CORE_LANE_URL` to check payment status and process accordingly.
 
 **Quick test:**
 
 ```bash
 lane up dev
-curl -X POST http://localhost:8080/webhook/payment \
+curl -X POST http://localhost:8080/submit \
   -H "Content-Type: application/json" \
-  -d '{"event":"payment.received","data":{"tx_hash":"abc123","amount":1000000}}'
+  -d '{"tx_hash":"abc123","intent_id":"intent_123","user":"bc1...","action":"purchase"}'
 ```
 
-See the [Webhooks Guide](docs/webhooks.md) and [Testing Guide](docs/testing-webhooks.md) for details.
+See the [Webhooks Guide](docs/webhooks.md) for details.
 
 **Need help?** Check the [documentation](docs/README.md) or run `lane --help`.
