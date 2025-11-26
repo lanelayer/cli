@@ -109,7 +109,7 @@ impl HttpClient {
         info!("HTTP client queued POST {} request to {} with {} bytes", path, host, body.len());
     }
 
-    pub fn queue_post_request(&mut self, client_port: u32, path: String, host: String, body: Vec<u8>, content_type: String) {
+    fn queue_post_request_impl(&mut self, client_port: u32, path: String, host: String, body: Vec<u8>, content_type: String) {
         self.pending_post_requests.insert(client_port, PendingPostRequest {
             path,
             host,
@@ -117,6 +117,10 @@ impl HttpClient {
             content_type,
         });
         info!("HTTP client queued POST request for client port {}", client_port);
+    }
+
+    pub fn queue_post_request(&mut self, client_port: u32, path: String, host: String, body: Vec<u8>, content_type: String) {
+        self.queue_post_request_impl(client_port, path, host, body, content_type);
     }
 
     pub fn parse_http_response(&self, response: &[u8]) -> Option<(u16, String)> {
@@ -161,13 +165,8 @@ impl Client for HttpClient {
     }
 
     fn queue_post_request(&mut self, client_port: u32, path: String, host: String, body: Vec<u8>, content_type: String) {
-        self.pending_post_requests.insert(client_port, PendingPostRequest {
-            path,
-            host,
-            body,
-            content_type,
-        });
-        info!("HTTP client queued POST request for client port {}", client_port);
+        // Delegate to the implementation to avoid code duplication
+        self.queue_post_request_impl(client_port, path, host, body, content_type);
     }
 
     fn on_connect_failed(&mut self, port: u32) {
