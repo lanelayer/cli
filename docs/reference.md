@@ -6,26 +6,27 @@ Complete command reference for VCR.
 
 ## 📋 Commands
 
-| Command | Description |
-|---------|-------------|
-| `vcr intro` | Show introduction |
-| `vcr create <name> --template <lang>` | Create new project |
-| `vcr up <profile> [options]` | Build and run |
-| `vcr down` | Stop environment |
-| `vcr logs [options]` | View logs |
-| `vcr shell [options]` | Open shell |
-| `vcr exec [options] <command>` | Run command |
-| `vcr cat <file>` | View file |
-| `vcr export <profile> <path>` | Export build |
-| `vcr push <registry>` | Push to registry |
-| `vcr prune [--local]` | Clean up |
-| `vcr perf <subcommand>` | Performance profiling |
+| Command                               | Description           |
+| ------------------------------------- | --------------------- |
+| `vcr intro`                           | Show introduction     |
+| `vcr create <name> --template <lang>` | Create new project    |
+| `vcr up <profile> [options]`          | Build and run         |
+| `vcr down`                            | Stop environment      |
+| `vcr logs [options]`                  | View logs             |
+| `vcr shell [options]`                 | Open shell            |
+| `vcr exec [options] <command>`        | Run command           |
+| `vcr cat <file>`                      | View file             |
+| `vcr export <profile> <path>`         | Export build          |
+| `vcr push <registry>`                 | Push to registry      |
+| `vcr prune [--local]`                 | Clean up              |
+| `vcr perf <subcommand>`               | Performance profiling |
 
 ---
 
 ## ⚙️ Common Options
 
 ### Build & Run
+
 ```bash
 --hot                    # Enable hot reload
 --image <image>          # Use existing image
@@ -34,6 +35,7 @@ Complete command reference for VCR.
 ```
 
 ### Debug
+
 ```bash
 --system                 # Target system container
 --follow                 # Follow logs in real-time
@@ -54,6 +56,7 @@ Complete command reference for VCR.
 ## 📝 Examples
 
 ### Development
+
 ```bash
 # Create and start
 vcr create myapp --template python
@@ -67,6 +70,7 @@ vcr exec "ls -la"
 ```
 
 ### Testing
+
 ```bash
 # Test in RISC-V
 vcr up stage
@@ -75,6 +79,7 @@ vcr perf record
 ```
 
 ### Production
+
 ```bash
 # Build and deploy
 vcr up prod
@@ -83,6 +88,7 @@ vcr push ghcr.io/org/myapp:latest
 ```
 
 ### Maintenance
+
 ```bash
 # Clean up
 vcr down
@@ -101,4 +107,12 @@ vcr <command> --help
 
 ---
 
-**Need more details?** Run `vcr <command> --help` for specific command help. 
+## 🌐 Environment Variables
+
+### Webhook Configuration
+
+- `CORE_LANE_URL` - URL of core-lane RPC endpoint (default: `http://core-lane:8545`)
+
+---
+
+**Need more details?** Run `vcr <command> --help` for specific command help.

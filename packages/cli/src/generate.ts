@@ -300,6 +300,9 @@ export function generateDockerCompose(
       networks: ["internal_net"],
       volumes: volumes,
       restart: "no",
+      environment: {
+        CORE_LANE_URL: process.env.CORE_LANE_URL || "http://core-lane:8545",
+      },
       // Remove command override; Dockerfile entrypoint handles hot reload
       healthcheck: {
         test: ["CMD", "curl", "-f", "http://localhost:8080/health"],
@@ -321,7 +324,6 @@ export function generateDockerCompose(
         `lane.path.hash=${pathHash}`,
         ...(hot ? [`lane.hot.reload=true`] : []),
       ],
-      // No build or environment keys here
     };
   }
 
