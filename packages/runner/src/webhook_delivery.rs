@@ -233,21 +233,32 @@ impl Service for WebhookServer {
                 
                 // Find the header end (end of headers, start of body)
                 if let Some(header_end) = buffer_str.find("\r\n\r\n") {
-                    let header_block = &buffer_str[..header_end];
+                    // Extract values we need before calling methods on self
+                    let header_block = buffer_str[..header_end].to_string();
                     let body_start = header_end + 4;
+                    let buffer_len = connection.buffer.len();
+                    
+                    // Drop mutable borrow before calling methods on self
+                    let _ = connection;
                     
                     // Parse Content-Length header
-                    let content_length = self.parse_content_length(header_block);
+                    let content_length = self.parse_content_length(&header_block);
                     
                     // Calculate expected total request length
                     let expected_length = body_start + content_length;
                     
                     // Only mark as complete when we have the full request (headers + body)
-                    if connection.buffer.len() >= expected_length {
-                        connection.request_complete = true;
-
+                    if buffer_len >= expected_length {
+                        // Clone buffer for processing (get immutable borrow)
+                        let buffer_clone = self.connections.get(&port).unwrap().buffer.clone();
+                        
+                        // Mark as complete (get mutable borrow again)
+                        if let Some(connection) = self.connections.get_mut(&port) {
+                            connection.request_complete = true;
+                        }
+                        
                         // Extract submission and send it for forwarding
-                        if let Some(submission) = self.extract_submission(&connection.buffer) {
+                        if let Some(submission) = self.extract_submission(&buffer_clone) {
                             if let Some(ref sender) = self.submission_sender {
                                 if let Err(e) = sender.try_send(submission) {
                                     error!("Failed to send submission for forwarding: {}", e);
@@ -256,7 +267,7 @@ impl Service for WebhookServer {
                         }
 
                         // Process the request
-                        let response = self.handle_webhook_request(&connection.buffer);
+                        let response = self.handle_webhook_request(&buffer_clone);
 
                         if let Some(response_data) = response {
                             self.pending_responses.insert(port, response_data);

@@ -1,5 +1,5 @@
 use crate::utils::{Client, RunnerState};
-use log::info;
+use log::{error, info};
 use std::collections::HashMap;
 
 /// Pending POST request metadata
