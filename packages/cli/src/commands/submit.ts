@@ -1,8 +1,13 @@
 import { execSync } from "child_process";
 import { join } from "path";
 import { existsSync, readFileSync } from "fs";
+import http from "http";
 import { showCommandHelp } from "./help";
-import { getComposeCacheDirectory, detectProfileAndSshKey, getPathHash } from "../cli";
+import {
+  getComposeCacheDirectory,
+  detectProfileAndSshKey,
+  getPathHash,
+} from "../cli";
 
 interface SubmissionData {
   tx_hash?: string;
@@ -125,7 +130,10 @@ function validateSubmission(submission: SubmissionData): void {
 }
 
 function checkContainerRunning(): boolean {
-  const composePath = join(getComposeCacheDirectory(), "docker-compose.dev.json");
+  const composePath = join(
+    getComposeCacheDirectory(),
+    "docker-compose.dev.json"
+  );
   if (!existsSync(composePath)) {
     return false;
   }
@@ -149,41 +157,47 @@ function checkContainerRunning(): boolean {
 
 function sendSubmission(submission: SubmissionData): void {
   const jsonData = JSON.stringify(submission);
-  const curlCommand = `curl -s -w "\\n%{http_code}" -X POST http://localhost:8080/submit -H "Content-Type: application/json" -d '${jsonData.replace(/'/g, "'\\''")}'`;
+  const options = {
+    hostname: "localhost",
+    port: 8080,
+    path: "/submit",
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(jsonData),
+    },
+  };
 
-  try {
-    const response = execSync(curlCommand, { encoding: "utf-8" });
-    const lines = response.trim().split("\n");
-    const httpCode = lines[lines.length - 1];
-    const body = lines.slice(0, -1).join("\n");
-
-    if (httpCode === "200") {
-      console.log("✅ Submission sent successfully");
-      if (body) {
-        try {
-          const parsed = JSON.parse(body);
-          console.log(JSON.stringify(parsed, null, 2));
-        } catch {
-          console.log(body);
+  const req = http.request(options, (res) => {
+    let body = "";
+    res.on("data", (chunk) => (body += chunk));
+    res.on("end", () => {
+      if (res.statusCode === 200) {
+        console.log("✅ Submission sent successfully");
+        if (body) {
+          try {
+            console.log(JSON.stringify(JSON.parse(body), null, 2));
+          } catch {
+            console.log(body);
+          }
         }
+      } else {
+        console.error(`❌ Submission failed with HTTP ${res.statusCode}`);
+        if (body) {
+          console.error(body);
+        }
+        process.exit(1);
       }
-    } else {
-      console.error(`❌ Submission failed with HTTP ${httpCode}`);
-      if (body) {
-        console.error(body);
-      }
-      process.exit(1);
-    }
-  } catch (err: any) {
+    });
+  });
+
+  req.on("error", (err) => {
     console.error(`❌ Error sending submission: ${err.message}`);
-    if (err.stdout) {
-      console.error(err.stdout);
-    }
-    if (err.stderr) {
-      console.error(err.stderr);
-    }
     process.exit(1);
-  }
+  });
+
+  req.write(jsonData);
+  req.end();
 }
 
 export function handleSubmitCommand(args: string[]): void {
@@ -219,4 +233,3 @@ export function handleSubmitCommand(args: string[]): void {
   console.log("📤 Sending submission to container...");
   sendSubmission(submission);
 }
-
