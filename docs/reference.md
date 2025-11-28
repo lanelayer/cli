@@ -1,31 +1,34 @@
 # CLI Reference
 
-Complete command reference for VCR.
+Complete command reference for LaneLayer CLI.
 
 ---
 
 ## 📋 Commands
 
-| Command | Description |
-|---------|-------------|
-| `vcr intro` | Show introduction |
-| `vcr create <name> --template <lang>` | Create new project |
-| `vcr up <profile> [options]` | Build and run |
-| `vcr down` | Stop environment |
-| `vcr logs [options]` | View logs |
-| `vcr shell [options]` | Open shell |
-| `vcr exec [options] <command>` | Run command |
-| `vcr cat <file>` | View file |
-| `vcr export <profile> <path>` | Export build |
-| `vcr push <registry>` | Push to registry |
-| `vcr prune [--local]` | Clean up |
-| `vcr perf <subcommand>` | Performance profiling |
+| Command                                | Description                           |
+| -------------------------------------- | ------------------------------------- |
+| `lane intro`                           | Show introduction                     |
+| `lane create <name> --template <lang>` | Create new project                    |
+| `lane build <profile> [options]`       | Build container images                |
+| `lane up <profile> [options]`          | Build and run                         |
+| `lane down`                            | Stop environment                      |
+| `lane logs [options]`                  | View logs                             |
+| `lane shell [options]`                 | Open shell                            |
+| `lane exec [options] <command>`        | Run command                           |
+| `lane cat <file>`                      | View file                             |
+| `lane submit [options]`                | Send raw data to container (dev only) |
+| `lane export <profile> <path>`         | Export build                          |
+| `lane push <registry>`                 | Push to registry                      |
+| `lane prune [--local]`                 | Clean up                              |
+| `lane perf <subcommand>`               | Performance profiling                 |
 
 ---
 
 ## ⚙️ Common Options
 
 ### Build & Run
+
 ```bash
 --hot                    # Enable hot reload
 --image <image>          # Use existing image
@@ -34,6 +37,7 @@ Complete command reference for VCR.
 ```
 
 ### Debug
+
 ```bash
 --system                 # Target system container
 --follow                 # Follow logs in real-time
@@ -54,43 +58,53 @@ Complete command reference for VCR.
 ## 📝 Examples
 
 ### Development
+
 ```bash
 # Create and start
-vcr create myapp --template python
+lane create myapp --template python
 cd myapp
-vcr up dev --hot
+lane up dev --hot
 
 # Debug
-vcr logs --follow
-vcr shell
-vcr exec "ls -la"
+lane logs --follow
+lane shell
+lane exec "ls -la"
+
+# Send raw data to container
+lane submit --data "raw data here"
+lane submit --file data.bin
+echo "data" | lane submit --stdin
+lane submit --data "data" --header "X-Forwarded-From: source"
 ```
 
 ### Testing
+
 ```bash
 # Test in RISC-V
-vcr up stage
-vcr shell --system
-vcr perf record
+lane up stage
+lane shell --system
+lane perf record
 ```
 
 ### Production
+
 ```bash
 # Build and deploy
-vcr up prod
-vcr export prod ./deployment
-vcr push ghcr.io/org/myapp:latest
+lane up prod
+lane export prod ./deployment
+lane push ghcr.io/org/myapp:latest
 ```
 
 ### Maintenance
+
 ```bash
 # Clean up
-vcr down
-vcr prune --local
+lane down
+lane prune --local
 
 # Get help
-vcr --help
-vcr <command> --help
+lane --help
+lane <command> --help
 ```
 
 ---
@@ -101,4 +115,12 @@ vcr <command> --help
 
 ---
 
-**Need more details?** Run `vcr <command> --help` for specific command help. 
+## 🌐 Environment Variables
+
+### Webhook Configuration
+
+- `CORE_LANE_URL` - URL of core-lane RPC endpoint (default: `http://core-lane:8545`)
+
+---
+
+**Need more details?** Run `lane <command> --help` for specific command help.

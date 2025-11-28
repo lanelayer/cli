@@ -36,6 +36,9 @@ export function showCommandHelp(command: string): void {
     case "perf":
       showPerfHelp();
       break;
+    case "submit":
+      showSubmitHelp();
+      break;
     default:
       console.log(`❓ Unknown command: ${command}`);
       console.log('Use "lane --help" to see all available commands');
@@ -441,5 +444,50 @@ Show introduction and quick start guide for LaneLayer.
   • Perfect for new users
   • Shows complete workflow from creation to deployment
   • Includes examples for all major use cases
+`);
+}
+
+function showSubmitHelp(): void {
+  console.log(`
+📤 lane submit - Send raw data to container
+===========================================
+
+Send raw binary data to your local container's /submit endpoint.
+This is for development and testing purposes only - it does NOT send
+to real lane nodes or DA.
+
+📋 Usage:
+  lane submit [options]
+
+⚙️  Options:
+  --data <string>               Raw data to send (required if not using --file or --stdin)
+  --file <path>                 Path to file containing data to send
+  --stdin                       Read data from stdin
+  --header <name>:<value>       Add HTTP header (can be used multiple times)
+  --help, -h                    Show this help message
+
+💡 Examples:
+  # Send string data
+  lane submit --data "raw data here"
+
+  # Send file contents
+  lane submit --file data.bin
+
+  # Send from stdin
+  echo "data" | lane submit --stdin
+
+  # Send with metadata headers
+  lane submit --data "data" --header "X-Forwarded-From: source" --header "X-Custom-Meta: value"
+
+  # Send binary file with headers
+  lane submit --file image.png --header "X-Content-Type: image/png" --header "X-User: user123"
+
+🔧 Notes:
+  • Container must be running (use "lane up" first)
+  • Sends POST request to http://localhost:8080/submit
+  • Content-Type: application/octet-stream
+  • Body: Raw binary data (no JSON encoding)
+  • Metadata can be passed via X- prefixed headers
+  • For development/testing only - does not interact with real lane nodes
 `);
 }
