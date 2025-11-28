@@ -59,10 +59,10 @@ Containers query lane state using `CORE_LANE_URL` to check payment status and pr
 
 ```bash
 lane up dev
-curl -X POST http://localhost:8080/submit \
-  -H "Content-Type: application/json" \
-  -d '{"tx_hash":"abc123","intent_id":"intent_123","user":"bc1...","action":"purchase"}'
+lane submit --tx-hash "abc123" --intent-id "intent_123" --user "bc1..." --action "purchase"
 ```
+
+> **Note**: `lane submit` is for development/testing only. It sends to your local container, not to real lane nodes or DA.
 
 See the [Webhooks Guide](docs/webhooks.md) for details.
 

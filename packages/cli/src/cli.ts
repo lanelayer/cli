@@ -19,6 +19,7 @@ import { handleExportCommand } from "./commands/export";
 import { handleIntroCommand } from "./commands/intro";
 import { handlePushCommand } from "./commands/push";
 import { handleDownCommand } from "./commands/down";
+import { handleSubmitCommand } from "./commands/submit";
 import { showCommandHelp } from "./commands/help";
 import { checkDockerAvailable } from "./checks";
 
@@ -87,6 +88,7 @@ Build and run HTTP server containers for payments and intent execution.
   📤 lane push <registry-path> [options]  Build and push container to registry
   🛑 lane down                            Stop development environment
   📄 lane logs [options]                  View container logs
+  📤 lane submit [options]                Send test submission to container (dev only)
   ⚡ lane exec [options] <command>        Execute command in container
   🐚 lane shell [options]                 Open shell in container
   📖 lane cat <file-path>                 View file contents in container
@@ -197,6 +199,10 @@ function main() {
 
     case "perf":
       handlePerfCommand(args);
+      break;
+
+    case "submit":
+      handleSubmitCommand(args);
       break;
 
     default:

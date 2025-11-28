@@ -36,6 +36,9 @@ export function showCommandHelp(command: string): void {
     case "perf":
       showPerfHelp();
       break;
+    case "submit":
+      showSubmitHelp();
+      break;
     default:
       console.log(`❓ Unknown command: ${command}`);
       console.log('Use "lane --help" to see all available commands');
@@ -441,5 +444,64 @@ Show introduction and quick start guide for LaneLayer.
   • Perfect for new users
   • Shows complete workflow from creation to deployment
   • Includes examples for all major use cases
+`);
+}
+
+function showSubmitHelp(): void {
+  console.log(`
+📤 lane submit - Send test submission to container
+==================================================
+
+Send a test submission to your local container's /submit endpoint.
+This is for development and testing purposes only - it does NOT send
+to real lane nodes or DA.
+
+📋 Usage:
+  lane submit [options]
+
+⚙️  Options:
+  --tx-hash <hash>              Transaction hash (optional)
+  --intent-id <id>              Intent identifier (optional)
+  --user <address>              User address (required)
+  --action <action>             Action type (required)
+  --params <json>               Action parameters as JSON string (optional)
+  --timestamp <iso>             ISO 8601 timestamp (optional, defaults to now)
+  --file <path>                 Path to JSON file with submission data
+  --help, -h                    Show this help message
+
+💡 Examples:
+  # Using command-line flags
+  lane submit --tx-hash "abc123" --user "bc1q..." --action "purchase" --timestamp "2024-01-15T10:40:00Z"
+
+  # Using JSON file
+  lane submit --file submission.json
+
+  # With intent and params
+  lane submit --intent-id "intent_123" --user "bc1q..." --action "purchase" --params '{"item_id":"item_456","quantity":2}'
+
+  # Minimal submission (user and action required)
+  lane submit --user "bc1q..." --action "test"
+
+📝 JSON File Format:
+  {
+    "tx_hash": "abc123def456...",
+    "intent_id": "intent_123",
+    "user": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+    "action": "purchase",
+    "params": {
+      "item_id": "item_456",
+      "quantity": 2
+    },
+    "timestamp": "2024-01-15T10:40:00Z",
+    "block_height": 850000,
+    "confirmations": 1
+  }
+
+🔧 Notes:
+  • Container must be running (use "lane up" first)
+  • Sends POST request to http://localhost:8080/submit
+  • For development/testing only - does not interact with real lane nodes
+  • Timestamp defaults to current time if not provided
+  • At least one of --tx-hash or --intent-id should be provided (though not strictly required)
 `);
 }

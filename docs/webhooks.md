@@ -159,9 +159,34 @@ This environment variable is automatically provided to containers, allowing them
 
 ## Local Testing
 
-For local development, you can test the submission endpoint by sending HTTP POST requests directly to your container.
+For local development, you can test the submission endpoint using the `lane submit` command or by sending HTTP POST requests directly to your container.
 
-### Quick Test
+> **Note**: The `lane submit` command is for **development and testing purposes only**. It does NOT send submissions to real lane nodes or DA. It only sends to your local running container.
+
+### Using lane submit (Recommended)
+
+The easiest way to test submissions is using the `lane submit` command:
+
+```bash
+# Make sure your container is running
+lane up dev
+
+# Send a test submission with flags
+lane submit --tx-hash "abc123" --user "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" --action "purchase" --timestamp "2024-01-15T10:40:00Z"
+
+# Send with intent and params
+lane submit --intent-id "intent_123" --user "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" --action "purchase" --params '{"item_id":"item_456","quantity":2}'
+
+# Send from JSON file
+lane submit --file submission.json
+
+# Get help
+lane submit --help
+```
+
+### Using curl (Alternative)
+
+You can also use `curl` directly:
 
 ```bash
 # Test submission with intent
@@ -218,9 +243,11 @@ See `packages/sample-python/app.py` for a complete example with:
 
 ### Container Not Receiving Submissions
 
-1. Check container is running: `docker ps`
+1. Check container is running: `docker ps` or `lane logs`
 2. Verify endpoint exists: `curl http://localhost:8080/health`
-3. Test submission endpoint: `curl -X POST http://localhost:8080/submit -H "Content-Type: application/json" -d '{"test": "data"}'`
+3. Test submission endpoint: 
+   - Using CLI: `lane submit --user "bc1qtest" --action "test"`
+   - Using curl: `curl -X POST http://localhost:8080/submit -H "Content-Type: application/json" -d '{"user":"bc1qtest","action":"test","timestamp":"2024-01-15T10:40:00Z"}'`
 
 ### State Queries Failing
 
