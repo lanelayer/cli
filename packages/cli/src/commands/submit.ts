@@ -139,7 +139,6 @@ function checkContainerRunning(): boolean {
   }
 
   try {
-    const { profile } = detectProfileAndSshKey();
     const pathHash = getPathHash();
     const containerName = `${pathHash}-lane-isolated-service`;
 
