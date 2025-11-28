@@ -1,10 +1,10 @@
 # Webhooks Guide
 
-LaneLayer containers receive transaction and intent submissions from core-lane via a single `/submit` endpoint. Containers query lane state to check payment status, confirmations, and process submissions accordingly.
+LaneLayer containers receive raw data submissions from core-lane via a single `/submit` endpoint. The endpoint accepts raw binary data with optional metadata passed via HTTP headers.
 
 ## Overview
 
-When a transaction or intent is submitted to core-lane, core-lane calls your container's `/submit` endpoint with comprehensive submission data. Your container then queries lane state using the `CORE_LANE_URL` environment variable to check payment status, confirmations, and other relevant information before processing.
+When data is submitted to core-lane, core-lane calls your container's `/submit` endpoint with raw binary data. Any metadata (such as source, type, or context) is passed via X- prefixed HTTP headers, keeping data and metadata separate.
 
 ## Submission Endpoint
 
@@ -12,36 +12,23 @@ When a transaction or intent is submitted to core-lane, core-lane calls your con
 
 **`POST /submit`**
 
-Core-lane calls this endpoint when transactions or intents are submitted.
+Core-lane calls this endpoint with raw binary data.
 
-### Request Schema
+### Request Format
 
-```json
-{
-  "tx_hash": "abc123def456...",
-  "intent_id": "intent_123",
-  "user": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-  "action": "purchase",
-  "params": {
-    "item_id": "item_456",
-    "quantity": 2
-  },
-  "timestamp": "2024-01-15T10:40:00Z",
-  "block_height": 850000,
-  "confirmations": 1
-}
-```
+- **Content-Type**: `application/octet-stream`
+- **Body**: Raw binary data (any format)
+- **Headers**: Standard HTTP headers + optional X- prefixed metadata headers
 
-**Fields:**
+### Metadata Headers
 
-- `tx_hash` (string, optional) - Transaction hash
-- `intent_id` (string, optional) - Intent identifier
-- `user` (string) - User address
-- `action` (string) - Action type (e.g., "purchase", "transfer")
-- `params` (object, optional) - Action-specific parameters
-- `timestamp` (string) - ISO 8601 timestamp
-- `block_height` (number, optional) - Block height if confirmed
-- `confirmations` (number, optional) - Number of confirmations
+Metadata is passed via X- prefixed HTTP headers. Examples:
+
+- `X-Forwarded-From: source_name`
+- `X-Content-Type: application/json` (if data is JSON, but sent as octet-stream)
+- `X-User: user_address`
+- `X-Timestamp: 2024-01-15T10:40:00Z`
+- Any custom X- headers your application needs
 
 ### Example Handler
 
@@ -49,40 +36,38 @@ Core-lane calls this endpoint when transactions or intents are submitted.
 import aiohttp
 from aiohttp import web
 import os
-import json
 
 async def submit_handler(request):
-    """Handle transaction/intent submissions"""
-    data = await request.json()
+    """Handle raw data submissions"""
+    # Read raw binary data
+    data = await request.read()
 
-    tx_hash = data.get("tx_hash")
-    intent_id = data.get("intent_id")
-    user = data.get("user")
-    action = data.get("action")
+    # Extract metadata from headers
+    forwarded_from = request.headers.get("X-Forwarded-From")
+    content_type = request.headers.get("X-Content-Type")
+    user = request.headers.get("X-User")
+    timestamp = request.headers.get("X-Timestamp")
 
-    # Get core-lane URL from environment
-    core_lane_url = os.environ.get("CORE_LANE_URL", "http://core-lane:8545")
+    # Process the raw data
+    # Data can be any format: binary, text, JSON string, etc.
+    logger.info(f"Received {len(data)} bytes from {forwarded_from}")
 
-    # Query lane state to check payment status
-    if intent_id:
-        intent_state = await check_intent_payment(intent_id, core_lane_url)
-        payment_made = intent_state.get("payment_made", False)
-
-        if payment_made:
-            # Process the payment
-            process_payment(intent_id, user, action)
-        else:
-            # Payment not yet made
-            handle_pending_payment(intent_id)
-
-    if tx_hash:
-        # Check transaction state
-        tx_state = await check_transaction_state(tx_hash, core_lane_url)
-        confirmations = tx_state.get("confirmations", 0)
-
-        if confirmations >= 1:
-            # Transaction confirmed, process it
-            process_transaction(tx_hash, tx_state)
+    # If data is JSON (indicated by X-Content-Type header)
+    if content_type == "application/json":
+        import json
+        try:
+            json_data = json.loads(data.decode("utf-8"))
+            # Process JSON data
+            process_json_submission(json_data, user, timestamp)
+        except json.JSONDecodeError:
+            logger.error("Failed to parse JSON data")
+            return web.json_response(
+                {"status": "error", "message": "Invalid JSON"},
+                status=400
+            )
+    else:
+        # Process raw binary data
+        process_raw_data(data, forwarded_from, user)
 
     return web.json_response({
         "status": "ok",
@@ -171,14 +156,20 @@ The easiest way to test submissions is using the `lane submit` command:
 # Make sure your container is running
 lane up dev
 
-# Send a test submission with flags
-lane submit --tx-hash "abc123" --user "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" --action "purchase" --timestamp "2024-01-15T10:40:00Z"
+# Send raw string data
+lane submit --data "raw data here"
 
-# Send with intent and params
-lane submit --intent-id "intent_123" --user "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" --action "purchase" --params '{"item_id":"item_456","quantity":2}'
+# Send file contents
+lane submit --file data.bin
 
-# Send from JSON file
-lane submit --file submission.json
+# Send from stdin
+echo "data" | lane submit --stdin
+
+# Send with metadata headers
+lane submit --data "data" --header "X-Forwarded-From: source" --header "X-User: user123"
+
+# Send JSON data with metadata
+lane submit --data '{"key":"value"}' --header "X-Content-Type: application/json" --header "X-User: bc1q..."
 
 # Get help
 lane submit --help
@@ -189,17 +180,18 @@ lane submit --help
 You can also use `curl` directly:
 
 ```bash
-# Test submission with intent
+# Send raw data
 curl -X POST http://localhost:8080/submit \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tx_hash": "abc123",
-    "intent_id": "intent_123",
-    "user": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-    "action": "purchase",
-    "params": {"item_id": "item_456", "quantity": 2},
-    "timestamp": "2024-01-15T10:40:00Z"
-  }'
+  -H "Content-Type: application/octet-stream" \
+  -H "X-Forwarded-From: test" \
+  --data-binary "raw binary data"
+
+# Send file
+curl -X POST http://localhost:8080/submit \
+  -H "Content-Type: application/octet-stream" \
+  -H "X-Content-Type: application/json" \
+  -H "X-User: bc1q..." \
+  --data-binary @data.json
 ```
 
 ### Using the Test Script
@@ -245,7 +237,7 @@ See `packages/sample-python/app.py` for a complete example with:
 
 1. Check container is running: `docker ps` or `lane logs`
 2. Verify endpoint exists: `curl http://localhost:8080/health`
-3. Test submission endpoint: 
+3. Test submission endpoint:
    - Using CLI: `lane submit --user "bc1qtest" --action "test"`
    - Using curl: `curl -X POST http://localhost:8080/submit -H "Content-Type: application/json" -d '{"user":"bc1qtest","action":"test","timestamp":"2024-01-15T10:40:00Z"}'`
 

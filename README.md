@@ -49,17 +49,17 @@ lane up dev
 
 ## 🔔 Submissions
 
-Containers receive transaction and intent submissions via a single endpoint:
+Containers receive raw data submissions via a single endpoint:
 
-- **`POST /submit`** - Receives submissions from core-lane
-
-Containers query lane state using `CORE_LANE_URL` to check payment status and process accordingly.
+- **`POST /submit`** - Receives raw binary data from core-lane (Content-Type: `application/octet-stream`)
+- Metadata is passed via X- prefixed HTTP headers (e.g., `X-Forwarded-From`, `X-User`)
 
 **Quick test:**
 
 ```bash
 lane up dev
-lane submit --tx-hash "abc123" --intent-id "intent_123" --user "bc1..." --action "purchase"
+lane submit --data "raw data here"
+lane submit --file data.bin --header "X-Forwarded-From: source"
 ```
 
 > **Note**: `lane submit` is for development/testing only. It sends to your local container, not to real lane nodes or DA.

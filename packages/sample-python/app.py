@@ -31,112 +31,75 @@ async def health(request):
 
 async def submit_handler(request):
     """
-    Handle transaction/intent submissions from core-lane.
+    Handle raw data submissions from core-lane.
 
-    This endpoint receives submission data and queries lane state to check
-    payment status, confirmations, and other relevant information.
+    This endpoint receives raw binary data (application/octet-stream) with
+    optional metadata passed via X- prefixed HTTP headers.
     """
     try:
-        data = await request.json()
-        logger.info(f"Received submission: {json.dumps(data, indent=2)}")
+        # Read raw binary data
+        data = await request.read()
 
-        # Extract submission data
-        tx_hash = data.get("tx_hash")
-        intent_id = data.get("intent_id")
-        user = data.get("user")
-        action = data.get("action")
-        params = data.get("params", {})
-        timestamp = data.get("timestamp")
+        # Extract metadata from headers
+        forwarded_from = request.headers.get("X-Forwarded-From")
+        content_type = request.headers.get("X-Content-Type")
+        user = request.headers.get("X-User")
+        timestamp = request.headers.get("X-Timestamp")
 
         logger.info(
-            f"Processing submission - tx_hash: {tx_hash}, intent_id: {intent_id}, user: {user}, action: {action}, params: {json.dumps(params)}"
+            f"Received {len(data)} bytes from {forwarded_from or 'unknown source'}"
         )
 
-        # Get core-lane URL from environment
-        core_lane_url = os.environ.get("CORE_LANE_URL", "http://core-lane:8545")
+        if forwarded_from:
+            logger.info(f"Source: {forwarded_from}")
+        if user:
+            logger.info(f"User: {user}")
+        if timestamp:
+            logger.info(f"Timestamp: {timestamp}")
 
-        # Query lane state to check payment status and other information
-        if intent_id:
-            # Check intent state and payment status
-            intent_state = await check_intent_payment(intent_id, core_lane_url)
-            logger.info(
-                f"Intent state for {intent_id}: {json.dumps(intent_state, indent=2)}"
-            )
+        # Process the raw data
+        # Data can be any format: binary, text, JSON string, etc.
 
-            # Process based on state
-            if intent_state:
-                # Check if payment was made
-                payment_made = intent_state.get("payment_made", False)
-                if payment_made:
-                    logger.info(f"Payment confirmed for intent {intent_id}")
-                    # Process the payment
-                    # Update database, trigger business logic, etc.
-                else:
-                    logger.info(f"No payment found for intent {intent_id}")
-                    # Handle case where payment hasn't been made yet
-
-        if tx_hash:
-            # Check transaction state
-            tx_state = await check_transaction_state(tx_hash, core_lane_url)
-            logger.info(
-                f"Transaction state for {tx_hash}: {json.dumps(tx_state, indent=2)}"
-            )
-
-            # Process based on transaction state
-            if tx_state:
-                confirmations = tx_state.get("confirmations", 0)
-                amount = tx_state.get("amount")
-                sender = tx_state.get("sender")
-
-                logger.info(
-                    f"Transaction {tx_hash}: {confirmations} confirmations, {amount} sats from {sender}"
-                )
-
-                # Process based on confirmations
-                if confirmations >= 1:
-                    logger.info(
-                        f"Transaction {tx_hash} has {confirmations} confirmation(s) - processing"
-                    )
-                    # Transaction is confirmed, process it
-                else:
-                    logger.info(f"Transaction {tx_hash} not yet confirmed - waiting")
-
-        # Process the submission based on action
-        if action:
-            logger.info(
-                f"Processing action: {action} with params: {json.dumps(params)}"
-            )
-            # Handle different actions (purchase, transfer, etc.)
-            # This is where your business logic goes
+        # If X-Content-Type indicates JSON, try to parse it
+        if content_type == "application/json":
+            try:
+                json_data = json.loads(data.decode("utf-8"))
+                logger.info(f"Parsed JSON data: {json.dumps(json_data, indent=2)}")
+                # Process JSON data as needed
+                process_json_data(json_data, user, timestamp)
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.warning(f"Failed to parse JSON data: {e}")
+                # Continue processing as raw data
+                process_raw_data(data, forwarded_from, user)
+        else:
+            # Process raw binary data
+            process_raw_data(data, forwarded_from, user)
 
         return web.json_response(
             {
                 "status": "ok",
                 "message": "Submission processed successfully",
-                "tx_hash": tx_hash,
-                "intent_id": intent_id,
+                "bytes_received": len(data),
             },
             status=200,
         )
-    except json.JSONDecodeError as e:
-        logger.exception("Failed to parse JSON request body")
-        return web.json_response(
-            {"status": "error", "message": "Invalid JSON"}, status=400
-        )
-    except aiohttp.ClientError as e:
-        logger.exception("HTTP client error while processing submission")
-        return web.json_response(
-            {"status": "error", "message": "Network error"}, status=500
-        )
-    except KeyError as e:
-        logger.exception(f"Missing required field in submission: {e}")
-        return web.json_response(
-            {"status": "error", "message": f"Missing required field: {e}"}, status=400
-        )
     except Exception as e:
         logger.exception("Unexpected error processing submission")
-        # Re-raise unexpected errors after logging
-        raise
+        return web.json_response({"status": "error", "message": str(e)}, status=500)
+
+
+def process_raw_data(data: bytes, source: str = None, user: str = None):
+    """Process raw binary data."""
+    logger.info(f"Processing {len(data)} bytes of raw data")
+    # Add your data processing logic here
+    # This is where you handle the raw binary data
+
+
+def process_json_data(json_data: dict, user: str = None, timestamp: str = None):
+    """Process JSON data (when X-Content-Type indicates JSON)."""
+    logger.info(f"Processing JSON data for user: {user}")
+    # Add your JSON processing logic here
+    # This is where you handle structured JSON data
 
 
 async def check_intent_payment(intent_id: str, core_lane_url: str) -> dict:

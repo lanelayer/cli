@@ -6,22 +6,22 @@ Complete command reference for LaneLayer CLI.
 
 ## 📋 Commands
 
-| Command                                | Description                     |
-| -------------------------------------- | ------------------------------- |
-| `lane intro`                           | Show introduction               |
-| `lane create <name> --template <lang>` | Create new project              |
-| `lane build <profile> [options]`       | Build container images          |
-| `lane up <profile> [options]`          | Build and run                   |
-| `lane down`                            | Stop environment                |
-| `lane logs [options]`                  | View logs                       |
-| `lane shell [options]`                 | Open shell                      |
-| `lane exec [options] <command>`        | Run command                     |
-| `lane cat <file>`                      | View file                       |
-| `lane submit [options]`                | Send test submission (dev only) |
-| `lane export <profile> <path>`         | Export build                    |
-| `lane push <registry>`                 | Push to registry                |
-| `lane prune [--local]`                 | Clean up                        |
-| `lane perf <subcommand>`               | Performance profiling           |
+| Command                                | Description                           |
+| -------------------------------------- | ------------------------------------- |
+| `lane intro`                           | Show introduction                     |
+| `lane create <name> --template <lang>` | Create new project                    |
+| `lane build <profile> [options]`       | Build container images                |
+| `lane up <profile> [options]`          | Build and run                         |
+| `lane down`                            | Stop environment                      |
+| `lane logs [options]`                  | View logs                             |
+| `lane shell [options]`                 | Open shell                            |
+| `lane exec [options] <command>`        | Run command                           |
+| `lane cat <file>`                      | View file                             |
+| `lane submit [options]`                | Send raw data to container (dev only) |
+| `lane export <profile> <path>`         | Export build                          |
+| `lane push <registry>`                 | Push to registry                      |
+| `lane prune [--local]`                 | Clean up                              |
+| `lane perf <subcommand>`               | Performance profiling                 |
 
 ---
 
@@ -70,9 +70,11 @@ lane logs --follow
 lane shell
 lane exec "ls -la"
 
-# Test webhook submissions
-lane submit --user "bc1q..." --action "purchase" --tx-hash "abc123"
-lane submit --file submission.json
+# Send raw data to container
+lane submit --data "raw data here"
+lane submit --file data.bin
+echo "data" | lane submit --stdin
+lane submit --data "data" --header "X-Forwarded-From: source"
 ```
 
 ### Testing
