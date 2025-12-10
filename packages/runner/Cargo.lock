@@ -109,7 +109,7 @@ checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
 [[package]]
 name = "cartesi-machine"
 version = "0.19.0"
-source = "git+https://github.com/zippiehq/cm-rust-bindings?branch=fix%2Frebuilds#0d69a734ade65d1860ebe5e50245cfe86e42d601"
+source = "git+https://github.com/lanelayer/cm-rust-bindings?rev=80aa8ef3c76ca768c546b035a23524f72e948d47#80aa8ef3c76ca768c546b035a23524f72e948d47"
 dependencies = [
  "base64",
  "cartesi-machine-sys",
@@ -123,7 +123,7 @@ dependencies = [
 [[package]]
 name = "cartesi-machine-sys"
 version = "0.19.0"
-source = "git+https://github.com/zippiehq/cm-rust-bindings?branch=fix%2Frebuilds#0d69a734ade65d1860ebe5e50245cfe86e42d601"
+source = "git+https://github.com/lanelayer/cm-rust-bindings?rev=80aa8ef3c76ca768c546b035a23524f72e948d47#80aa8ef3c76ca768c546b035a23524f72e948d47"
 dependencies = [
  "bindgen",
  "bytes",
@@ -134,7 +134,6 @@ dependencies = [
  "reqwest",
  "sha1",
  "tar",
- "tempfile",
 ]
 
 [[package]]
