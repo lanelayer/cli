@@ -16,7 +16,7 @@ pub struct HttpClient {
     connections: HashMap<u32, HttpClientConnection>,
     pending_requests: HashMap<u32, Vec<u8>>,
     pending_post_requests: HashMap<u32, PendingPostRequest>, // Keyed by client port
-    client_port_to_connection: HashMap<u32, u32>, // Maps client port to connection port
+    client_port_to_connection: HashMap<u32, u32>,            // Maps client port to connection port
     responses: HashMap<u32, Vec<u8>>,
 }
 
@@ -73,12 +73,19 @@ impl HttpClient {
         }
     }
 
-    fn create_http_request(&self, method: &str, path: &str, host: &str, body: Option<&[u8]>, content_type: Option<&str>) -> Vec<u8> {
+    fn create_http_request(
+        &self,
+        method: &str,
+        path: &str,
+        host: &str,
+        body: Option<&[u8]>,
+        content_type: Option<&str>,
+    ) -> Vec<u8> {
         let mut headers = format!(
             "{} {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n",
             method, path, host
         );
-        
+
         if let Some(body_data) = body {
             let body_len = body_data.len();
             headers.push_str(&format!("Content-Length: {}\r\n", body_len));
@@ -86,14 +93,14 @@ impl HttpClient {
                 headers.push_str(&format!("Content-Type: {}\r\n", ct));
             }
         }
-        
+
         headers.push_str("\r\n");
         let mut request = headers.into_bytes();
-        
+
         if let Some(body_data) = body {
             request.extend_from_slice(body_data);
         }
-        
+
         request
     }
 
@@ -103,23 +110,55 @@ impl HttpClient {
         info!("HTTP client queued {} {} request to {}", method, path, host);
     }
 
-    pub fn make_post_request(&mut self, connection_port: u32, path: &str, host: &str, body: &[u8], content_type: &str) {
+    pub fn make_post_request(
+        &mut self,
+        connection_port: u32,
+        path: &str,
+        host: &str,
+        body: &[u8],
+        content_type: &str,
+    ) {
         let request = self.create_http_request("POST", path, host, Some(body), Some(content_type));
         self.pending_requests.insert(connection_port, request);
-        info!("HTTP client queued POST {} request to {} with {} bytes", path, host, body.len());
-    }
-
-    fn queue_post_request_impl(&mut self, client_port: u32, path: String, host: String, body: Vec<u8>, content_type: String) {
-        self.pending_post_requests.insert(client_port, PendingPostRequest {
+        info!(
+            "HTTP client queued POST {} request to {} with {} bytes",
             path,
             host,
-            body,
-            content_type,
-        });
-        info!("HTTP client queued POST request for client port {}", client_port);
+            body.len()
+        );
     }
 
-    pub fn queue_post_request(&mut self, client_port: u32, path: String, host: String, body: Vec<u8>, content_type: String) {
+    fn queue_post_request_impl(
+        &mut self,
+        client_port: u32,
+        path: String,
+        host: String,
+        body: Vec<u8>,
+        content_type: String,
+    ) {
+        self.pending_post_requests.insert(
+            client_port,
+            PendingPostRequest {
+                path,
+                host,
+                body,
+                content_type,
+            },
+        );
+        info!(
+            "HTTP client queued POST request for client port {}",
+            client_port
+        );
+    }
+
+    pub fn queue_post_request(
+        &mut self,
+        client_port: u32,
+        path: String,
+        host: String,
+        body: Vec<u8>,
+        content_type: String,
+    ) {
         self.queue_post_request_impl(client_port, path, host, body, content_type);
     }
 
@@ -154,17 +193,33 @@ impl Client for HttpClient {
         info!("HTTP client connection successful on port {}", port);
         let connection = HttpClientConnection::new(port);
         self.connections.insert(port, connection);
-        
+
         // Check if there's a pending POST request for this client port
         if let Some(post_req) = self.pending_post_requests.remove(&self.port) {
             self.client_port_to_connection.insert(self.port, port);
-            let request = self.create_http_request("POST", &post_req.path, &post_req.host, Some(&post_req.body), Some(&post_req.content_type));
+            let request = self.create_http_request(
+                "POST",
+                &post_req.path,
+                &post_req.host,
+                Some(&post_req.body),
+                Some(&post_req.content_type),
+            );
             self.pending_requests.insert(port, request);
-            info!("HTTP client constructed POST request for connection port {}", port);
+            info!(
+                "HTTP client constructed POST request for connection port {}",
+                port
+            );
         }
     }
 
-    fn queue_post_request(&mut self, client_port: u32, path: String, host: String, body: Vec<u8>, content_type: String) {
+    fn queue_post_request(
+        &mut self,
+        client_port: u32,
+        path: String,
+        host: String,
+        body: Vec<u8>,
+        content_type: String,
+    ) {
         // Delegate to the implementation to avoid code duplication
         self.queue_post_request_impl(client_port, path, host, body, content_type);
     }
@@ -232,7 +287,6 @@ impl Client for HttpClient {
             false
         }
     }
-
 }
 
 /// Helper function to create and add an HTTP client to the runner state
@@ -299,7 +353,7 @@ pub fn make_http_post_request(
         error!("{}", error_msg);
         Box::<dyn std::error::Error>::from(error_msg)
     })?;
-    
+
     client.queue_post_request(
         client_port,
         path.to_string(),
@@ -314,6 +368,6 @@ pub fn make_http_post_request(
 
     // Initiate the connection
     state.initiate_connection(client_port, target_cid, target_port)?;
-    
+
     Ok(())
 }

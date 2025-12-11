@@ -146,9 +146,17 @@ impl Client for HttpHealthCheckClient {
         false
     }
 
-    fn queue_post_request(&mut self, client_port: u32, path: String, host: String, body: Vec<u8>, content_type: String) {
+    fn queue_post_request(
+        &mut self,
+        client_port: u32,
+        path: String,
+        host: String,
+        body: Vec<u8>,
+        content_type: String,
+    ) {
         // Delegate to underlying HTTP client
-        self.http_client.queue_post_request(client_port, path, host, body, content_type);
+        self.http_client
+            .queue_post_request(client_port, path, host, body, content_type);
     }
 }
 
