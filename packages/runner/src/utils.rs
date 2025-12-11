@@ -61,7 +61,14 @@ pub trait Client: Send {
 
     /// Queue a POST request to be sent when connection is established
     /// Default implementation does nothing (for clients that don't support POST)
-    fn queue_post_request(&mut self, _client_port: u32, _path: String, _host: String, _body: Vec<u8>, _content_type: String) {
+    fn queue_post_request(
+        &mut self,
+        _client_port: u32,
+        _path: String,
+        _host: String,
+        _body: Vec<u8>,
+        _content_type: String,
+    ) {
         // Default: no-op
     }
 }
@@ -100,7 +107,6 @@ impl RunnerState {
     pub fn get_listener(&mut self, port: u32) -> Option<&mut Box<dyn Service>> {
         self.listeners.get_mut(&port)
     }
-
 
     // Client methods
     pub fn add_client(&mut self, port: u32, client: Box<dyn Client>) {
