@@ -7,15 +7,19 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use vsock::{VsockAddr, VsockStream};
+use vsock::{VsockAddr, VsockListener, VsockStream, VMADDR_CID_ANY};
 use vsock_protocol::{
     Packet, VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RST, VSOCK_OP_RW,
-    VSOCK_OP_SHUTDOWN,
+    VSOCK_OP_SHUTDOWN, VSOCK_TYPE_STREAM,
 };
 
 const CMIO_QUEUE_ID: u16 = 0x27;
 const RW_BUF_SIZE: usize = 4096;
 const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(5);
+
+const GUEST_CID: u32 = 1;
+const HOST_CID: u32 = 3;
+const HOST_HTTP_PORT: u32 = 8080;
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 struct ConnectionKey {
@@ -40,6 +44,7 @@ struct Connection {
 struct ConnectionManager {
     connections: HashMap<ConnectionKey, Connection>,
     cmio_driver: Arc<Mutex<CmioIoDriver>>,
+    listeners: HashMap<u32, VsockListener>,
 }
 
 impl ConnectionManager {
@@ -47,6 +52,7 @@ impl ConnectionManager {
         Self {
             connections: HashMap::new(),
             cmio_driver,
+            listeners: HashMap::new(),
         }
     }
 
@@ -115,6 +121,102 @@ impl ConnectionManager {
         Ok(())
     }
 
+    fn add_listener(&mut self, port: u32) -> Result<(), Box<dyn Error>> {
+        if self.listeners.contains_key(&port) {
+            info!(target: "guest", "Listener already exists on port {}", port);
+            return Ok(());
+        }
+
+        let listener = VsockListener::bind(&VsockAddr::new(VMADDR_CID_ANY, port))?;
+        listener.set_nonblocking(true)?;
+        self.listeners.insert(port, listener);
+        info!(target: "guest", "Listening for vsock connections on port {}", port);
+        Ok(())
+    }
+
+    fn poll_vsock_listeners(&mut self) -> Result<(), Box<dyn Error>> {
+        for (port, listener) in self.listeners.iter() {
+            loop {
+                match listener.accept() {
+                    Ok((stream, addr)) => {
+                        info!(
+                            target: "guest",
+                            "Accepted vsock connection on port {} from {}:{}",
+                            port,
+                            addr.cid(),
+                            addr.port()
+                        );
+
+                        stream.set_nonblocking(true)?;
+
+                        let request_hdr = VirtioVsockHdr {
+                            src_cid: GUEST_CID,
+                            dst_cid: HOST_CID,
+                            src_port: *port,
+                            dst_port: HOST_HTTP_PORT,
+                            len: 0,
+                            type_: VSOCK_TYPE_STREAM,
+                            op: VSOCK_OP_REQUEST,
+                            flags: 0,
+                            buf_alloc: 0,
+                            fwd_cnt: 0,
+                        };
+
+                        let packet = Packet::new(request_hdr, vec![]);
+                        let key = ConnectionKey::from(&request_hdr);
+
+                        info!(
+                            target: "guest",
+                            "Initiating CMIO vsock connection to host for {:?}",
+                            key
+                        );
+
+                        match self
+                            .cmio_driver
+                            .lock()
+                            .unwrap()
+                            .send_cmio(&packet.to_bytes(), CMIO_QUEUE_ID)
+                        {
+                            Ok(_) => {
+                                self.connections.insert(
+                                    key,
+                                    Connection {
+                                        stream,
+                                        request_hdr,
+                                    },
+                                );
+                                info!(
+                                    target: "guest",
+                                    "Registered new guest <-> host proxy connection for {:?}",
+                                    key
+                                );
+                            }
+                            Err(e) => {
+                                error!(
+                                    target: "guest",
+                                    "Failed to send initial CMIO packet for {:?}: {}",
+                                    key,
+                                    e
+                                );
+                                let _ = stream.shutdown(std::net::Shutdown::Both);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            target: "guest",
+                            "Error accepting connection on listener {}: {}",
+                            port,
+                            e
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn handle_new_connection_request(
         &mut self,
         request_hdr: VirtioVsockHdr,
@@ -172,7 +274,6 @@ impl ConnectionManager {
                         create_reply_header(&connection.request_hdr, VSOCK_OP_RW, n as u32);
                     let packet_to_cmio = Packet::new(rw_hdr, data.to_vec());
                     packets_to_send.push(packet_to_cmio);
-
                     info!(
                         target: "guest",
                         "GUEST: ECHOING {} BYTES BACK TO VSOCK FOR\n {:?}",
@@ -282,10 +383,16 @@ fn create_reply_header(request_hdr: &VirtioVsockHdr, op: u16, len: u32) -> Virti
 pub fn run_agent(cmio_driver: Arc<Mutex<CmioIoDriver>>) -> Result<(), Box<dyn Error>> {
     info!(target: "guest", "GUEST AGENT STARTED");
     let mut manager = ConnectionManager::new(cmio_driver);
+    manager.add_listener(10000)?;
+    println!("GUEST AGENT: LISTENING ON PORT 10000");
 
     loop {
         if let Err(e) = manager.poll_vsock_connections() {
             error!(target: "guest", "Error polling vsock connections: {}", e);
+        }
+
+        if let Err(e) = manager.poll_vsock_listeners() {
+            error!(target: "guest", "Error polling vsock listeners: {}", e);
         }
 
         if let Err(e) = manager.poll_cmio() {
