@@ -8,7 +8,7 @@ Build and run **HTTP server containers** for payments and intent execution on La
 
 ## License
 
-Currently unlicensed.
+Apache License v2.0
 
 ## 🚀 Quick Start
 
