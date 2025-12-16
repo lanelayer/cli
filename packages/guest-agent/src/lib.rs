@@ -203,13 +203,17 @@ impl ConnectionManager {
                         }
                     }
                     Err(e) => {
-                        error!(
-                            target: "guest",
-                            "Error accepting connection on listener {}: {}",
-                            port,
-                            e
-                        );
-                        break;
+                        if e.kind() == std::io::ErrorKind::WouldBlock {
+                            info!(target: "guest", "No more pending connections on listener {}. Ignoring.", port);
+                        } else {
+                            error!(
+                                target: "guest",
+                                "Error accepting connection on listener {}: {}",
+                                port,
+                                e
+                            );
+                            break;
+                        }
                     }
                 }
             }
