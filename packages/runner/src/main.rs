@@ -13,9 +13,10 @@ use crate::http_health_check_client::add_http_health_check_client;
 use crate::http_server::add_http_server;
 use crate::utils::{run_machine_loop, RunnerState};
 use crate::webhook_delivery::{add_webhook_delivery_service, Submission};
-use serde_json;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
+use tokio::time;
 /// The path to the machine snapshot.
 const MACHINE_PATH: &str = "../../vc-cm-snapshot-release";
 /// The port the guest machine is listening on.
@@ -40,15 +41,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         (health_rx, submit_done_rx)
     };
 
-    {
-        let mut state_guard = state.lock().await;
-        info!("Starting health check...");
-        if let Err(e) = start_health_check(&mut state_guard, 9000, 1, 8080) {
-            eprintln!("Failed to start health check: {}", e);
-            return Ok(());
-        }
-    }
-
     let machine_for_loop = Arc::clone(&machine);
     let state_for_loop = Arc::clone(&state);
     let state_for_webhook = Arc::clone(&state);
@@ -62,12 +54,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
 
     let health_check_and_webhook_fut = async move {
+        const MAX_ATTEMPTS: u32 = 20;
+
         info!("Waiting for health check to succeed...");
-        let health_check_result = health_rx.recv().await;
-        if let Some(true) = health_check_result {
-            info!("Health check succeeded! Proceeding with webhook submission...");
-        } else {
-            info!("Health check failed, skipping webhook submission...");
+        let mut succeeded = false;
+        for attempt in 1..=MAX_ATTEMPTS {
+            // Clear any leftover messages from the health channel so a late arrival from a prior attempt can't be mistaken for a new successful health check.
+            while health_rx.try_recv().is_ok() {
+                info!(
+                    "Drained stale health check message before attempt {}",
+                    attempt
+                );
+            }
+
+            {
+                let mut state_guard = state_for_webhook.lock().await;
+                info!(
+                    "Starting health check attempt {}/{}...",
+                    attempt, MAX_ATTEMPTS
+                );
+                if let Err(e) = start_health_check(&mut state_guard, 9000, 1, 8080) {
+                    info!("Failed to start health check attempt {}: {}", attempt, e);
+                }
+            }
+
+            match time::timeout(Duration::from_secs(5), health_rx.recv()).await {
+                Ok(Some(true)) => {
+                    info!("Health check succeeded! Proceeding with webhook submission...");
+                    succeeded = true;
+                    break;
+                }
+                Ok(Some(_)) => {
+                    info!("Received non-success health check message, continuing attempts...");
+                }
+                Ok(None) => {
+                    info!("Health channel closed unexpectedly");
+                    break;
+                }
+                Err(_) => {
+                    info!("Health check attempt {} timed out", attempt);
+                }
+            }
+
+            time::sleep(Duration::from_secs(5)).await;
+        }
+
+        if !succeeded {
+            info!(
+                "Health check failed after {} attempts, skipping webhook submission...",
+                MAX_ATTEMPTS
+            );
             return;
         }
 

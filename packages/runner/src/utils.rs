@@ -3,7 +3,7 @@ use cartesi_machine::types::cmio::{
     AutomaticReason, CmioRequest, CmioResponseReason, ManualReason,
 };
 use log::info;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 use vsock_protocol::{
     Packet, VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RST, VSOCK_OP_RW,
@@ -78,7 +78,7 @@ pub struct RunnerState {
     clients: HashMap<u32, Box<dyn Client>>, // Maps client port to client instance
     connection_service_map: HashMap<u32, u32>, // Maps connection port to service port
     connection_client_map: HashMap<u32, u32>, // Maps connection port to client port
-    cmio_write_queue: Vec<Packet>,
+    cmio_write_queue: VecDeque<Packet>,
     cmio_read_queue: Vec<Packet>,
     client_connect_attempts: HashMap<u32, u32>,
 }
@@ -90,7 +90,7 @@ impl RunnerState {
             clients: HashMap::new(),
             connection_service_map: HashMap::new(),
             connection_client_map: HashMap::new(),
-            cmio_write_queue: Vec::new(),
+            cmio_write_queue: VecDeque::new(),
             cmio_read_queue: Vec::new(),
             client_connect_attempts: HashMap::new(),
         }
@@ -175,11 +175,11 @@ impl RunnerState {
 
     // CMIO queue methods
     pub fn add_to_write_queue(&mut self, packet: Packet) {
-        self.cmio_write_queue.push(packet);
+        self.cmio_write_queue.push_back(packet);
     }
 
     pub fn pop_from_write_queue(&mut self) -> Option<Packet> {
-        self.cmio_write_queue.pop()
+        self.cmio_write_queue.pop_front()
     }
 
     pub fn add_to_read_queue(&mut self, packet: Packet) {
@@ -316,9 +316,7 @@ pub async fn run_machine_loop(
                         if let Some(client) = state.get_client(client_port) {
                             client.on_reset(src_port);
                         }
-                        let target_port = state.get_service_port(src_port).unwrap_or(src_port);
                         state.remove_connection(src_port);
-                        let _ = state.initiate_connection(client_port, GUEST_CID, target_port);
                     } else {
                         info!(
                             "No connection found for port: {:?}, ignoring reset",
@@ -355,9 +353,7 @@ pub async fn run_machine_loop(
                         if let Some(client) = state.get_client(client_port) {
                             client.on_shutdown(src_port);
                         }
-                        let target_port = state.get_service_port(src_port).unwrap_or(src_port);
                         state.remove_connection(src_port);
-                        let _ = state.initiate_connection(client_port, GUEST_CID, target_port);
                     } else {
                         info!("No connection found for port: {:?}", src_port);
                     }
