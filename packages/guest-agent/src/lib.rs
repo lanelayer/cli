@@ -7,10 +7,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use vsock::{VsockAddr, VsockListener, VsockStream, VMADDR_CID_ANY};
+use vsock::{VMADDR_CID_ANY, VsockAddr, VsockListener, VsockStream};
 use vsock_protocol::{
-    Packet, VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RST, VSOCK_OP_RW,
-    VSOCK_OP_SHUTDOWN, VSOCK_TYPE_STREAM,
+    Packet, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RST, VSOCK_OP_RW, VSOCK_OP_SHUTDOWN,
+    VSOCK_TYPE_STREAM, VirtioVsockHdr,
 };
 
 const CMIO_QUEUE_ID: u16 = 0x27;
@@ -190,6 +190,7 @@ impl ConnectionManager {
                                     "Registered new guest <-> host proxy connection for {:?}",
                                     key
                                 );
+                                break;
                             }
                             Err(e) => {
                                 error!(
@@ -204,7 +205,8 @@ impl ConnectionManager {
                     }
                     Err(e) => {
                         if e.kind() == std::io::ErrorKind::WouldBlock {
-                            info!(target: "guest", "No more pending connections on listener {}. Ignoring.", port);
+                            // No more pending connections yet on this listener. Ignoring.
+                            break;
                         } else {
                             error!(
                                 target: "guest",
