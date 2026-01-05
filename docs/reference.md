@@ -121,6 +121,11 @@ lane <command> --help
 
 - `CORE_LANE_URL` - URL of core-lane RPC endpoint (default: `http://core-lane:8545`)
 
+### K/V Storage API
+
+- `KV_URL` - URL of the ephemeral key-value storage service (dev/test only)
+- See [docs/kv-api.md](file:///Users/michaelasiedu/Code/cli/docs/kv-api.md) for full storage API details.
+
 ---
 
 **Need more details?** Run `lane <command> --help` for specific command help.
