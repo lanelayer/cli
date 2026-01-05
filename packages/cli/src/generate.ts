@@ -354,6 +354,23 @@ export function generateDockerCompose(
         ],
       },
       isolated_service: isolatedServiceConfig,
+      kv_service: {
+        build: {
+          context: join(__dirname, "../../kv-service"),
+          dockerfile: "Dockerfile",
+        },
+        container_name: `${pathHash}-lane-kv-service`,
+        hostname: "kv-service",
+        networks: ["internal_net"],
+        restart: "no",
+        labels: [
+          "traefik.enable=true",
+          "traefik.http.routers.kv.rule=PathPrefix(`/kv`)",
+          "traefik.http.routers.kv.entrypoints=web",
+          "traefik.http.routers.kv.priority=100",
+          "traefik.http.services.kv.loadbalancer.server.port=3000",
+        ],
+      },
       internet_service: {
         image: "alpine",
         container_name: `${pathHash}-lane-guest-agent`,
