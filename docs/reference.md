@@ -124,7 +124,7 @@ lane <command> --help
 ### K/V Storage API
 
 - `KV_URL` - URL of the ephemeral key-value storage service (dev/test only)
-- See [docs/kv-api.md](file:///Users/michaelasiedu/Code/cli/docs/kv-api.md) for full storage API details.
+- See [kv-api.md](./kv-api.md) for full storage API details.
 
 ---
 
