@@ -15,8 +15,10 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 // GET /kv/:key - Read value
-app.get("/kv/*", (req: Request, res: Response) => {
-	const key = req.params[0];
+app.get("/kv/{*key}", (req: Request, res: Response) => {
+	// Express 5 returns wildcard params as array of segments
+	const keyParts = req.params.key;
+	const key = Array.isArray(keyParts) ? keyParts.join("/") : keyParts;
 
 	if (!key) {
 		res.status(400).send("Key required");
@@ -35,8 +37,10 @@ app.get("/kv/*", (req: Request, res: Response) => {
 });
 
 // POST /kv/:key - Set value
-app.post("/kv/*", (req: Request, res: Response) => {
-	const key = req.params[0];
+app.post("/kv/{*key}", (req: Request, res: Response) => {
+
+	const keyParts = req.params.key;
+	const key = Array.isArray(keyParts) ? keyParts.join("/") : keyParts;
 
 	if (!key) {
 		res.status(400).send("Key required");
@@ -51,8 +55,10 @@ app.post("/kv/*", (req: Request, res: Response) => {
 });
 
 // DELETE /kv/:key - Delete value
-app.delete("/kv/*", (req: Request, res: Response) => {
-	const key = req.params[0];
+app.delete("/kv/{*key}", (req: Request, res: Response) => {
+
+	const keyParts = req.params.key;
+	const key = Array.isArray(keyParts) ? keyParts.join("/") : keyParts;
 
 	if (!key) {
 		res.status(400).send("Key required");

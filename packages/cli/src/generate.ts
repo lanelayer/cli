@@ -354,23 +354,36 @@ export function generateDockerCompose(
         ],
       },
       isolated_service: isolatedServiceConfig,
-      kv_service: {
-        build: {
-          context: join(__dirname, "../../kv-service"),
-          dockerfile: "Dockerfile",
-        },
-        container_name: `${pathHash}-lane-kv-service`,
-        hostname: "kv-service",
-        networks: ["internal_net"],
-        restart: "no",
-        labels: [
-          "traefik.enable=true",
-          "traefik.http.routers.kv.rule=PathPrefix(`/kv`)",
-          "traefik.http.routers.kv.entrypoints=web",
-          "traefik.http.routers.kv.priority=100",
-          "traefik.http.services.kv.loadbalancer.server.port=3000",
-        ],
-      },
+      // K/V service only available in dev mode (ephemeral storage)
+      // Production uses blockchain-anchored persistent storage
+      ...(profile === "dev"
+        ? {
+          kv_service: {
+            build: {
+              context: join(__dirname, "../../kv-service"),
+              dockerfile: "Dockerfile",
+            },
+            container_name: `${pathHash}-lane-kv-service`,
+            hostname: "kv-service",
+            networks: ["internal_net"],
+            restart: "no",
+            healthcheck: {
+              test: ["CMD", "curl", "-f", "http://localhost:3000/health"],
+              interval: "30s",
+              timeout: "10s",
+              retries: 3,
+              start_period: "10s",
+            },
+            labels: [
+              "traefik.enable=true",
+              "traefik.http.routers.kv.rule=PathPrefix(`/kv`)",
+              "traefik.http.routers.kv.entrypoints=web",
+              "traefik.http.routers.kv.priority=100",
+              "traefik.http.services.kv.loadbalancer.server.port=3000",
+            ],
+          },
+        }
+        : {}),
       internet_service: {
         image: "alpine",
         container_name: `${pathHash}-lane-guest-agent`,
