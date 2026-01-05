@@ -24,10 +24,14 @@ curl http://localhost:8080/kv/test        # → "hello"
 curl -X DELETE http://localhost:8080/kv/test
 curl http://localhost:8080/kv/test        # → "Not found"
 
-# 4. Verify app still works
+# 4. Verify internal connectivity (container -> K/V)
+curl -X POST http://localhost:8080/submit -H "X-User: Alice"
+curl http://localhost:8080/kv/last_submission  # → "Alice" ✅
+
+# 5. Verify app still works
 curl http://localhost:8080/health
 
-# 5. Clean up
+# 6. Clean up
 node ../cli/dist/cli.js down
 ```
 

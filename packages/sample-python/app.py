@@ -75,6 +75,14 @@ async def submit_handler(request):
             # Process raw binary data
             process_raw_data(data, forwarded_from, user)
 
+        # Store submission metadata in K/V store to confirm connectivity
+        await kv_set(f"submissions/{timestamp or 'latest'}", json.dumps({
+            "user": user or "anonymous",
+            "bytes": len(data),
+            "source": forwarded_from
+        }))
+        await kv_set("last_submission", user or "anonymous")
+
         return web.json_response(
             {
                 "status": "ok",
@@ -109,7 +117,8 @@ def process_json_data(json_data: dict, user: str = None, timestamp: str = None):
 # In dev/test mode, this store resets when the environment restarts.
 # In production, the K/V store provides persistent state for your derived lane.
 
-KV_BASE_URL = os.environ.get("KV_URL", "http://localhost:8080/kv")
+# Internal URL for container-to-container communication (Traefik: 8080/kv, Direct: 3000/kv)
+KV_BASE_URL = os.environ.get("KV_URL", "http://kv-service:3000/kv")
 
 # Module-level session for connection reuse (aiohttp best practice)
 _kv_session: aiohttp.ClientSession | None = None
