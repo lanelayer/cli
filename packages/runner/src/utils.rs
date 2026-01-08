@@ -258,7 +258,7 @@ pub async fn run_machine_loop(
                     if state.get_listener(dst_port).is_some() {
                         info!("Found listener for port: {:?}", dst_port);
                         state.add_to_write_queue(construct_packet(
-                            dst_port,
+                            src_port, // Send back to the requester's port
                             VSOCK_OP_RESPONSE,
                             &[],
                         )?);
@@ -296,7 +296,7 @@ pub async fn run_machine_loop(
                             info!("Client connection successful on port {}", src_port);
                             client.on_connect_success(src_port);
                             if let Some(data) = client.get_write_data(src_port) {
-                                let packet = construct_packet(dst_port, VSOCK_OP_RW, &data)?;
+                                let packet = construct_packet(src_port, VSOCK_OP_RW, &data)?;
                                 state.add_to_write_queue(packet);
                             }
                         }
@@ -355,7 +355,7 @@ pub async fn run_machine_loop(
                         }
                         state.remove_connection(src_port);
                     } else {
-                        info!("No connection found for port: {:?}", src_port);
+                        info!("No connection found for port: {:?} {:?}", src_port, state.get_connection_ports());
                     }
                 }
                 _ => {

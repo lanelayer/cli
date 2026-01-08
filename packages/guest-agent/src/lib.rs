@@ -39,6 +39,7 @@ impl From<&VirtioVsockHdr> for ConnectionKey {
 struct Connection {
     stream: VsockStream,
     request_hdr: VirtioVsockHdr,
+    guest_initiated: bool,
 }
 
 struct ConnectionManager {
@@ -183,6 +184,7 @@ impl ConnectionManager {
                                     Connection {
                                         stream,
                                         request_hdr,
+                                        guest_initiated: true,
                                     },
                                 );
                                 info!(
@@ -238,18 +240,19 @@ impl ConnectionManager {
             Ok(stream) => {
                 info!(target: "guest", "Connection to guest vsock successful for {:?}", key);
                 stream.set_nonblocking(true)?;
-                self.send_op_to_cmio(&request_hdr, VSOCK_OP_RESPONSE)?;
+                self.send_op_to_cmio(&request_hdr, VSOCK_OP_RESPONSE, false)?;
                 self.connections.insert(
                     key,
                     Connection {
                         stream,
                         request_hdr,
+                        guest_initiated: false,
                     },
                 );
             }
             Err(e) => {
                 error!(target: "guest", "Failed to connect to guest vsock for {:?}: {}", key, e);
-                self.send_op_to_cmio(&request_hdr, VSOCK_OP_RST)?;
+                self.send_op_to_cmio(&request_hdr, VSOCK_OP_RST, false)?;
             }
         }
         Ok(())
@@ -266,7 +269,7 @@ impl ConnectionManager {
             match connection.stream.read(&mut read_buf) {
                 Ok(0) => {
                     info!(target: "guest", "Vsock stream closed by peer for {:?}.", key);
-                    shutdowns_to_send.push(connection.request_hdr);
+                    shutdowns_to_send.push((connection.request_hdr, connection.guest_initiated));
                     to_remove.push(*key);
                 }
                 Ok(n) => {
@@ -276,8 +279,12 @@ impl ConnectionManager {
                         "Received {} bytes from vsock for\n {:?}, forwarding to CMIO.",
                         n, key
                     );
-                    let rw_hdr =
-                        create_reply_header(&connection.request_hdr, VSOCK_OP_RW, n as u32);
+                    let rw_hdr = create_header(
+                        &connection.request_hdr,
+                        VSOCK_OP_RW,
+                        n as u32,
+                        connection.guest_initiated,
+                    );
                     let packet_to_cmio = Packet::new(rw_hdr, data.to_vec());
                     packets_to_send.push(packet_to_cmio);
                     info!(
@@ -292,7 +299,7 @@ impl ConnectionManager {
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(e) => {
                     error!(target: "guest", "Error reading from vsock stream for {:?}: {}", key, e);
-                    resets_to_send.push(connection.request_hdr);
+                    resets_to_send.push((connection.request_hdr, connection.guest_initiated));
                     to_remove.push(*key);
                 }
             }
@@ -315,8 +322,8 @@ impl ConnectionManager {
             }
         }
 
-        for hdr in resets_to_send {
-            if let Err(e) = self.send_op_to_cmio(&hdr, VSOCK_OP_RST) {
+        for (hdr, guest_initiated) in resets_to_send {
+            if let Err(e) = self.send_op_to_cmio(&hdr, VSOCK_OP_RST, guest_initiated) {
                 error!(
                     target: "guest",
                     "Failed to send reset for {:?}: {}",
@@ -326,8 +333,8 @@ impl ConnectionManager {
             }
         }
 
-        for hdr in shutdowns_to_send {
-            if let Err(e) = self.send_op_to_cmio(&hdr, VSOCK_OP_SHUTDOWN) {
+        for (hdr, guest_initiated) in shutdowns_to_send {
+            if let Err(e) = self.send_op_to_cmio(&hdr, VSOCK_OP_SHUTDOWN, guest_initiated) {
                 error!(
                     target: "guest",
                     "Failed to send shutdown for {:?}: {}",
@@ -346,7 +353,12 @@ impl ConnectionManager {
         Ok(())
     }
 
-    fn send_op_to_cmio(&self, request_hdr: &VirtioVsockHdr, op: u16) -> Result<(), Box<dyn Error>> {
+    fn send_op_to_cmio(
+        &self,
+        request_hdr: &VirtioVsockHdr,
+        op: u16,
+        guest_initiated: bool,
+    ) -> Result<(), Box<dyn Error>> {
         let op_str = match op {
             VSOCK_OP_RESPONSE => "VSOCK_OP_RESPONSE",
             VSOCK_OP_RST => "VSOCK_OP_RST",
@@ -360,7 +372,7 @@ impl ConnectionManager {
             op_str,
             ConnectionKey::from(request_hdr)
         );
-        let reply_hdr = create_reply_header(request_hdr, op, 0);
+        let reply_hdr = create_header(request_hdr, op, 0, guest_initiated);
         let packet = Packet::new(reply_hdr, vec![]);
         self.cmio_driver
             .lock()
@@ -370,18 +382,40 @@ impl ConnectionManager {
     }
 }
 
-fn create_reply_header(request_hdr: &VirtioVsockHdr, op: u16, len: u32) -> VirtioVsockHdr {
-    VirtioVsockHdr {
-        src_cid: request_hdr.dst_cid,
-        dst_cid: request_hdr.src_cid,
-        src_port: request_hdr.dst_port,
-        dst_port: request_hdr.src_port,
-        len,
-        type_: request_hdr.type_,
-        op,
-        flags: 0,
-        buf_alloc: request_hdr.buf_alloc,
-        fwd_cnt: 0,
+/// For host-initiated connections: swap src/dst
+/// For guest-initiated connections: keep src/dst
+fn create_header(
+    request_hdr: &VirtioVsockHdr,
+    op: u16,
+    len: u32,
+    guest_initiated: bool,
+) -> VirtioVsockHdr {
+    if guest_initiated {
+        VirtioVsockHdr {
+            src_cid: request_hdr.src_cid,
+            dst_cid: request_hdr.dst_cid,
+            src_port: request_hdr.src_port,
+            dst_port: request_hdr.dst_port,
+            len,
+            type_: request_hdr.type_,
+            op,
+            flags: 0,
+            buf_alloc: request_hdr.buf_alloc,
+            fwd_cnt: 0,
+        }
+    } else {
+        VirtioVsockHdr {
+            src_cid: request_hdr.dst_cid,
+            dst_cid: request_hdr.src_cid,
+            src_port: request_hdr.dst_port,
+            dst_port: request_hdr.src_port,
+            len,
+            type_: request_hdr.type_,
+            op,
+            flags: 0,
+            buf_alloc: request_hdr.buf_alloc,
+            fwd_cnt: 0,
+        }
     }
 }
 
