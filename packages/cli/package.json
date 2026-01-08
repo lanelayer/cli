@@ -12,7 +12,8 @@
   ],
   "scripts": {
     "build": "tsc && npm run postbuild",
-    "postbuild": "rm -rf kv-service && cp -r ../kv-service kv-service && rm -rf kv-service/node_modules",
+    "postbuild": "rimraf kv-service && cpy \"../kv-service/src/**\" kv-service/src --flat=false && cpy \"../kv-service/{Dockerfile,package.json,package-lock.json,tsconfig.json}\" kv-service",
+    "prepublishOnly": "npm run build",
     "start": "node dist/cli.js"
   },
   "author": "LaneLayer",
@@ -25,9 +26,10 @@
   "bugs": {
     "url": "https://github.com/lanelayer/cli/issues"
   },
-  "dependencies": {},
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "cpy-cli": "^6.0.0",
+    "rimraf": "^6.1.2",
+    "typescript": "^5.0.0"
   }
 }
