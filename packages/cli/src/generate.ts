@@ -360,7 +360,9 @@ export function generateDockerCompose(
         ? {
           kv_service: {
             build: {
-              context: join(__dirname, "../../kv-service"),
+              context: existsSync(join(__dirname, "../kv-service"))
+                ? join(__dirname, "../kv-service")
+                : join(__dirname, "../../kv-service"),
               dockerfile: "Dockerfile",
             },
             container_name: `${pathHash}-lane-kv-service`,
