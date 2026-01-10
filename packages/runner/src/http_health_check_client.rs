@@ -1,37 +1,35 @@
+use crate::health_check_handler::HealthCheckHandler;
 use crate::http_client::HttpClient;
 use crate::utils::{Client, RunnerState};
 use log::info;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Arc;
+use std::sync::Mutex;
 
 /// HTTP Health Check Client that implements the Client trait
 pub struct HttpHealthCheckClient {
     http_client: HttpClient,
-    health_check_retries: u32,
-    max_retries: u32,
     target_host: String,
-    succesfull_response_received: Sender<bool>,
+    health_check_handler: Option<Arc<Mutex<dyn HealthCheckHandler>>>,
+    success: bool,
 }
 
 impl HttpHealthCheckClient {
     pub fn new(
         port: u32,
-        max_retries: u32,
         target_host: String,
-        succesfull_response_received: Sender<bool>,
+        health_check_handler: Option<Arc<Mutex<dyn HealthCheckHandler>>>,
     ) -> Self {
         info!("Creating HTTP health check client on port {}", port);
         Self {
             http_client: HttpClient::new(port),
-            health_check_retries: 0,
-            max_retries,
             target_host,
-            succesfull_response_received,
+            health_check_handler,
+            success: false,
         }
     }
 
     pub fn start_health_check(&mut self, connection_port: u32) {
         info!("Starting health check on port {}", connection_port);
-        self.health_check_retries = 0;
         self.http_client
             .make_request(connection_port, "GET", "/health", &self.target_host);
     }
@@ -56,6 +54,9 @@ impl Client for HttpHealthCheckClient {
             port
         );
         self.http_client.on_connect_failed(port);
+        if let Some(handler) = &self.health_check_handler {
+            handler.lock().unwrap().on_health_check_failure();
+        }
     }
 
     fn on_data(&mut self, port: u32, data: &[u8]) {
@@ -82,31 +83,13 @@ impl Client for HttpHealthCheckClient {
 
                     if status_code == 200 {
                         info!("Health check SUCCESS! Server is healthy.");
-                        // Don't retry on success
-                        self.succesfull_response_received.try_send(true);
+                        self.success = true;
+                        if let Some(handler) = &self.health_check_handler {
+                            handler.lock().unwrap().on_health_check_success();
+                        }
                     } else {
-                        info!("Health check failed with status {}", status_code);
-                        self.health_check_retries += 1;
-
-                        if self.health_check_retries < self.max_retries {
-                            info!(
-                                "Retrying health check (attempt {}/{})",
-                                self.health_check_retries + 1,
-                                self.max_retries
-                            );
-                            // Reset connection for retry
-                            if let Some(conn) = self.http_client.get_mut_connection(&port) {
-                                conn.set_response_complete(false);
-                                conn.clear_buffer();
-                            }
-                            self.http_client.make_request(
-                                port,
-                                "GET",
-                                "/health",
-                                &self.target_host,
-                            );
-                        } else {
-                            info!("Health check failed after {} attempts", self.max_retries);
+                        if let Some(handler) = &self.health_check_handler {
+                            handler.lock().unwrap().on_health_check_failure();
                         }
                     }
                 }
@@ -117,6 +100,9 @@ impl Client for HttpHealthCheckClient {
     fn on_reset(&mut self, port: u32) {
         info!("HTTP health check client connection reset on port {}", port);
         self.http_client.on_reset(port);
+        if let Some(handler) = &self.health_check_handler {
+            handler.lock().unwrap().on_health_check_failure();
+        }
     }
 
     fn on_shutdown(&mut self, port: u32) {
@@ -125,6 +111,11 @@ impl Client for HttpHealthCheckClient {
             port
         );
         self.http_client.on_shutdown(port);
+        if !self.success {
+            if let Some(handler) = &self.health_check_handler {
+                handler.lock().unwrap().on_health_check_failure();
+            }
+        }
     }
 
     fn get_write_data(&mut self, port: u32) -> Option<Vec<u8>> {
@@ -139,7 +130,7 @@ impl Client for HttpHealthCheckClient {
                     .http_client
                     .parse_http_response(connection.get_buffer())
                 {
-                    return status_code == 200 || self.health_check_retries >= self.max_retries;
+                    return status_code == 200;
                 }
             }
         }
@@ -164,19 +155,16 @@ impl Client for HttpHealthCheckClient {
 pub fn add_http_health_check_client(
     state: &mut RunnerState,
     client_port: u32,
-    max_retries: u32,
-) -> Receiver<bool> {
-    let (sender, receiver) = channel(2);
+    health_check_handler: Option<Arc<Mutex<dyn HealthCheckHandler>>>,
+) {
     let health_check_client = HttpHealthCheckClient::new(
         client_port,
-        max_retries,
         "localhost:8080".to_string(),
-        sender,
+        health_check_handler,
     );
     state.add_client(client_port, Box::new(health_check_client));
     info!(
         "HTTP health check client added to runner state on port {}",
         client_port
     );
-    receiver
 }

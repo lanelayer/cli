@@ -1,9 +1,10 @@
 use crate::http_client::HttpClient;
 use crate::utils::{Client, RunnerState};
+use crate::webhook_completion_handler::WebhookCompletionHandler;
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 
 /// Submission data sent from core-lane to containers
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,7 +30,7 @@ pub struct WebhookDeliveryService {
     max_retries: u32,
     target_host: String,
     submission_body: Vec<u8>,
-    submission_done: Sender<bool>,
+    webhook_completion_handler: Option<Arc<Mutex<dyn WebhookCompletionHandler>>>,
 }
 
 impl WebhookDeliveryService {
@@ -37,7 +38,7 @@ impl WebhookDeliveryService {
         client_port: u32,
         max_retries: u32,
         target_host: String,
-        submission_done: Sender<bool>,
+        webhook_completion_handler: Option<Arc<Mutex<dyn WebhookCompletionHandler>>>,
     ) -> Self {
         info!("Creating webhook submit client on port {}", client_port);
         Self {
@@ -46,7 +47,7 @@ impl WebhookDeliveryService {
             max_retries,
             target_host,
             submission_body: Vec::new(),
-            submission_done,
+            webhook_completion_handler,
         }
     }
 
@@ -76,6 +77,11 @@ impl Client for WebhookDeliveryService {
     fn on_connect_failed(&mut self, port: u32) {
         info!("Webhook submit client connection failed on port {}", port);
         self.http_client.on_connect_failed(port);
+        if let Some(handler) = &self.webhook_completion_handler {
+            if let Ok(mut handler_guard) = handler.lock() {
+                handler_guard.on_webhook_failure();
+            }
+        }
     }
 
     fn on_data(&mut self, port: u32, data: &[u8]) {
@@ -89,7 +95,11 @@ impl Client for WebhookDeliveryService {
                 {
                     if status_code == 200 {
                         info!("Webhook submit SUCCESS");
-                        let _ = self.submission_done.try_send(true);
+                        if let Some(handler) = &self.webhook_completion_handler {
+                            if let Ok(mut handler_guard) = handler.lock() {
+                                handler_guard.on_webhook_success();
+                            }
+                        }
                     } else if self.retries < self.max_retries {
                         self.retries += 1;
                         info!(
@@ -114,6 +124,11 @@ impl Client for WebhookDeliveryService {
                             "Webhook submit failed after {} attempts (last status {})",
                             self.max_retries, status_code
                         );
+                        if let Some(handler) = &self.webhook_completion_handler {
+                            if let Ok(mut handler_guard) = handler.lock() {
+                                handler_guard.on_webhook_failure();
+                            }
+                        }
                     }
                 }
             }
@@ -167,18 +182,17 @@ pub fn add_webhook_delivery_service(
     state: &mut RunnerState,
     client_port: u32,
     max_retries: u32,
-) -> Receiver<bool> {
-    let (sender, receiver) = channel(2);
+    webhook_completion_handler: Option<Arc<Mutex<dyn WebhookCompletionHandler>>>,
+) {
     let client = WebhookDeliveryService::new(
         client_port,
         max_retries,
         "localhost:8080".to_string(),
-        sender,
+        webhook_completion_handler,
     );
     state.add_client(client_port, Box::new(client));
     info!(
         "Webhook submit client added to runner state on port {}",
         client_port
     );
-    receiver
 }

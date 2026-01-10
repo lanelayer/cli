@@ -1,6 +1,6 @@
 use nix::{ioctl_read, ioctl_readwrite};
-use thiserror::Error;
 use std::path::Path;
+use thiserror::Error;
 
 #[cfg(not(feature = "mock_cmio"))]
 mod driver;

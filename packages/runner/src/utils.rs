@@ -2,9 +2,9 @@ use cartesi_machine::machine::Machine;
 use cartesi_machine::types::cmio::{
     AutomaticReason, CmioRequest, CmioResponseReason, ManualReason,
 };
+use hex;
 use log::info;
 use std::collections::{HashMap, VecDeque};
-use std::error::Error;
 use vsock_protocol::{
     Packet, VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RST, VSOCK_OP_RW,
     VSOCK_OP_SHUTDOWN, VSOCK_TYPE_STREAM,
@@ -14,6 +14,8 @@ const HOST_CID: u32 = 3;
 const HOST_PORT: u32 = 1025;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+// HealthCheckHandler is imported from crate root via lib.rs
 
 /// Service trait for handling vsock connections
 pub trait Service: Send {
@@ -81,6 +83,7 @@ pub struct RunnerState {
     cmio_write_queue: VecDeque<Packet>,
     cmio_read_queue: Vec<Packet>,
     client_connect_attempts: HashMap<u32, u32>,
+    root_hash: Option<Vec<u8>>, // Stores the root hash after machine execution completes
 }
 
 impl RunnerState {
@@ -93,7 +96,18 @@ impl RunnerState {
             cmio_write_queue: VecDeque::new(),
             cmio_read_queue: Vec::new(),
             client_connect_attempts: HashMap::new(),
+            root_hash: None,
         }
+    }
+
+    /// Get the root hash stored after machine execution
+    pub fn get_root_hash(&self) -> Option<&[u8]> {
+        self.root_hash.as_deref()
+    }
+
+    /// Set the root hash after machine execution
+    pub fn set_root_hash(&mut self, root_hash: Vec<u8>) {
+        self.root_hash = Some(root_hash);
     }
 
     pub fn add_listener(&mut self, port: u32, service: Box<dyn Service>) {
@@ -126,9 +140,9 @@ impl RunnerState {
         client_port: u32,
         target_cid: u32,
         target_port: u32,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Create a connection request packet
-        let packet = construct_packet(target_port, VSOCK_OP_REQUEST, &[])?;
+        let packet = construct_packet(client_port, target_port, VSOCK_OP_REQUEST, &[])?;
 
         // Add the packet to the write queue
         self.add_to_write_queue(packet);
@@ -192,16 +206,17 @@ impl RunnerState {
 }
 
 pub fn construct_packet(
+    client_port: u32,
     guest_port: u32,
     op: u16,
     payload: &[u8],
-) -> Result<Packet, Box<dyn Error>> {
+) -> Result<Packet, Box<dyn std::error::Error + Send + Sync>> {
     info!("Crafting vsock packet with op {}", op);
 
     let hdr = VirtioVsockHdr {
         src_cid: HOST_CID,
         dst_cid: GUEST_CID,
-        src_port: HOST_PORT,
+        src_port: client_port,
         dst_port: guest_port,
         len: payload.len() as u32,
         type_: VSOCK_TYPE_STREAM,
@@ -215,195 +230,233 @@ pub fn construct_packet(
     Ok(packet)
 }
 
+/// Run one iteration of the machine loop: run until yield, process packets, handle connections
+pub async fn run_machine_loop_iteration(
+    machine: Arc<Mutex<Machine>>,
+    state: Arc<Mutex<RunnerState>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut machine = machine.lock().await;
+    let mut state = state.lock().await;
+
+    info!(
+        "about to run machine until yield, Machine cycle = {}",
+        machine.mcycle().unwrap()
+    );
+    run_machine_until_yield(&mut machine)?;
+    let packet = receive_packet(&mut machine)?;
+
+    info!("packet = {:?}", packet);
+
+    if let Some(packet) = packet {
+        info!(
+            "RESPONSE FROM PACKET = {:?}",
+            String::from_utf8_lossy(packet.payload())
+        );
+
+        state.add_to_read_queue(packet);
+        send_empty_response(&mut machine)?;
+    } else {
+        info!(
+            "length of cmio_write_queue = {}",
+            state.cmio_write_queue.len()
+        );
+        // pop one packet from cmio_write_queue and set it as response
+        if let Some(packet) = state.pop_from_write_queue() {
+            info!("Sending send_cmio_response to guest: {:?}", packet);
+            machine.send_cmio_response(CmioResponseReason::Advance, &packet.to_bytes())?;
+        } else {
+            info!("No packet to send to guest, sending empty response");
+            send_empty_response(&mut machine)?;
+        }
+    }
+
+    // handle all packets in cmio_read_queue, pop them as we go
+    while let Some(packet) = state.pop_from_read_queue() {
+        match packet.hdr().op {
+            VSOCK_OP_REQUEST => {
+                info!("Received request packet: {:?}", packet);
+                let dst_port = packet.hdr().dst_port;
+                let src_port = packet.hdr().src_port;
+
+                if state.get_listener(dst_port).is_some() {
+                    info!("Found listener for port: {:?}", dst_port);
+                    state.add_to_write_queue(construct_packet(
+                        HOST_PORT,
+                        src_port, // Send back to the requester's port
+                        VSOCK_OP_RESPONSE,
+                        &[],
+                    )?);
+                    state.add_connection(src_port, dst_port);
+
+                    // Now call the service
+                    if let Some(service) = state.get_listener(dst_port) {
+                        service.on_connection(src_port);
+                    }
+                } else {
+                    info!("No listener found for port: {:?}", dst_port);
+                    // If no listener is found for the requested port, send a reset (RST) packet
+                    state.add_to_write_queue(construct_packet(
+                        HOST_PORT,
+                        dst_port,
+                        VSOCK_OP_RST,
+                        &[],
+                    )?);
+                }
+            }
+            VSOCK_OP_RESPONSE => {
+                info!("Received response packet: {:?}", packet);
+                let dst_port = packet.hdr().dst_port;
+                let src_port = packet.hdr().src_port;
+                let mapped_client_port = if let Some(client_port) = state.get_client_port(src_port)
+                {
+                    Some(client_port)
+                } else if let Some(client_port) = state.get_client_port(dst_port) {
+                    state.add_client_connection(src_port, client_port);
+                    state.add_connection(src_port, dst_port);
+                    state.remove_connection(dst_port);
+                    Some(client_port)
+                } else {
+                    None
+                };
+
+                if let Some(client_port) = mapped_client_port {
+                    state.client_connect_attempts.insert(client_port, 0);
+                    if let Some(client) = state.get_client(client_port) {
+                        info!("Client connection successful on port {}", src_port);
+                        client.on_connect_success(src_port);
+                        if let Some(data) = client.get_write_data(src_port) {
+                            let packet =
+                                construct_packet(client_port, src_port, VSOCK_OP_RW, &data)?;
+                            state.add_to_write_queue(packet);
+                        }
+                    }
+                }
+            }
+            VSOCK_OP_RST => {
+                info!("Received reset packet: {:?}", packet);
+                let src_port = packet.hdr().src_port;
+                if let Some(service_port) = state.get_service_port(src_port) {
+                    info!("Found service connection for port: {:?}", src_port);
+                    if let Some(service) = state.get_listener(service_port) {
+                        service.on_reset(src_port);
+                    }
+                    state.remove_connection(src_port);
+                } else if let Some(client_port) = state.get_client_port(src_port) {
+                    info!("Found client connection for port: {:?}", src_port);
+                    if let Some(client) = state.get_client(client_port) {
+                        client.on_reset(src_port);
+                    }
+                    state.remove_connection(src_port);
+                } else {
+                    info!(
+                        "No connection found for port: {:?}, ignoring reset",
+                        src_port
+                    );
+                }
+            }
+            VSOCK_OP_RW => {
+                info!("Received rw packet: {:?}", packet);
+                let src_port = packet.hdr().src_port;
+                if let Some(service_port) = state.get_service_port(src_port) {
+                    // Find the service for this connection using the service_port
+                    if let Some(service) = state.get_listener(service_port) {
+                        service.on_data(src_port, packet.payload());
+                    }
+                } else if let Some(client_port) = state.get_client_port(src_port) {
+                    // Find the client for this connection using the client_port
+                    if let Some(client) = state.get_client(client_port) {
+                        client.on_data(src_port, packet.payload());
+                    }
+                } else {
+                    info!("No connection found for port: {:?}", src_port);
+                }
+            }
+            VSOCK_OP_SHUTDOWN => {
+                info!("Received shutdown packet: {:?}", packet);
+                let src_port = packet.hdr().src_port;
+                if let Some(service_port) = state.get_service_port(src_port) {
+                    if let Some(service) = state.get_listener(service_port) {
+                        service.on_shutdown(src_port);
+                    }
+                    state.remove_connection(src_port);
+                } else if let Some(client_port) = state.get_client_port(src_port) {
+                    if let Some(client) = state.get_client(client_port) {
+                        client.on_shutdown(src_port);
+                    }
+                    state.remove_connection(src_port);
+                } else {
+                    info!(
+                        "No connection found for port: {:?} {:?}",
+                        src_port,
+                        state.get_connection_ports()
+                    );
+                }
+            }
+            _ => {
+                info!("Received unknown packet: {:?}", packet)
+            }
+        }
+    }
+    // walk through all connections and send any pending data
+
+    let connection_ports = state.get_connection_ports();
+    let mut packets_to_send = Vec::new();
+    for port in connection_ports {
+        // Check if service wants to write data
+        if let Some(service_port) = state.get_service_port(port) {
+            if let Some(service) = state.get_listener(service_port) {
+                if let Some(data) = service.get_write_data(port) {
+                    let packet = construct_packet(HOST_PORT, port, VSOCK_OP_RW, &data)?;
+                    packets_to_send.push(packet);
+                }
+
+                // Check if service wants to shutdown the connection
+                if service.should_shutdown(port) {
+                    let packet = construct_packet(HOST_PORT, port, VSOCK_OP_SHUTDOWN, &[])?;
+                    packets_to_send.push(packet);
+                }
+            }
+        }
+
+        // Check if client wants to write data
+        if let Some(client_port) = state.get_client_port(port) {
+            if let Some(client) = state.get_client(client_port) {
+                if let Some(data) = client.get_write_data(port) {
+                    let packet = construct_packet(client_port, port, VSOCK_OP_RW, &data)?;
+                    packets_to_send.push(packet);
+                }
+
+                // Check if client wants to shutdown the connection
+                if client.should_shutdown(port) {
+                    let packet = construct_packet(client_port, port, VSOCK_OP_SHUTDOWN, &[])?;
+                    packets_to_send.push(packet);
+                }
+            }
+        }
+    }
+    for packet in packets_to_send {
+        state.add_to_write_queue(packet);
+    }
+
+    // Capture root_hash at the end of each loop iteration
+    // This ensures we always have the most recent state's root_hash
+    // and will have the final root_hash when execution completes
+    if let Ok(root_hash) = machine.root_hash() {
+        state.set_root_hash(root_hash.to_vec());
+        info!("🔷 RUNNER CAPTURED ROOT HASH: {}", hex::encode(root_hash));
+    }
+
+    info!("Machine cycle = {}", machine.mcycle().unwrap());
+    Ok(())
+}
+
+/// Run the machine loop continuously (for backwards compatibility)
 pub async fn run_machine_loop(
     machine: Arc<Mutex<Machine>>,
     state: Arc<Mutex<RunnerState>>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     loop {
-        let mut machine = machine.lock().await;
-        let mut state = state.lock().await;
-
-        run_machine_until_yield(&mut machine)?;
-        let packet = receive_packet(&mut machine)?;
-
-        info!("packet = {:?}", packet);
-
-        if let Some(packet) = packet {
-            info!(
-                "RESPONSE FROM PACKET = {:?}",
-                String::from_utf8_lossy(packet.payload())
-            );
-
-            state.add_to_read_queue(packet);
-            send_empty_response(&mut machine)?;
-        } else {
-            // pop one packet from cmio_write_queue and set it as response
-            if let Some(packet) = state.pop_from_write_queue() {
-                info!("Sending send_cmio_response to guest: {:?}", packet);
-                machine.send_cmio_response(CmioResponseReason::Advance, &packet.to_bytes())?;
-            } else {
-                info!("No packet to send to guest, sending empty response");
-                send_empty_response(&mut machine)?;
-            }
-        }
-
-        // handle all packets in cmio_read_queue, pop them as we go
-        while let Some(packet) = state.pop_from_read_queue() {
-            match packet.hdr().op {
-                VSOCK_OP_REQUEST => {
-                    info!("Received request packet: {:?}", packet);
-                    let dst_port = packet.hdr().dst_port;
-                    let src_port = packet.hdr().src_port;
-
-                    if state.get_listener(dst_port).is_some() {
-                        info!("Found listener for port: {:?}", dst_port);
-                        state.add_to_write_queue(construct_packet(
-                            src_port, // Send back to the requester's port
-                            VSOCK_OP_RESPONSE,
-                            &[],
-                        )?);
-                        state.add_connection(src_port, dst_port);
-
-                        // Now call the service
-                        if let Some(service) = state.get_listener(dst_port) {
-                            service.on_connection(src_port);
-                        }
-                    } else {
-                        info!("No listener found for port: {:?}", dst_port);
-                        // If no listener is found for the requested port, send a reset (RST) packet
-                        state.add_to_write_queue(construct_packet(dst_port, VSOCK_OP_RST, &[])?);
-                    }
-                }
-                VSOCK_OP_RESPONSE => {
-                    info!("Received response packet: {:?}", packet);
-                    let dst_port = packet.hdr().dst_port;
-                    let src_port = packet.hdr().src_port;
-                    let mapped_client_port =
-                        if let Some(client_port) = state.get_client_port(src_port) {
-                            Some(client_port)
-                        } else if let Some(client_port) = state.get_client_port(dst_port) {
-                            state.add_client_connection(src_port, client_port);
-                            state.add_connection(src_port, dst_port);
-                            state.remove_connection(dst_port);
-                            Some(client_port)
-                        } else {
-                            None
-                        };
-
-                    if let Some(client_port) = mapped_client_port {
-                        state.client_connect_attempts.insert(client_port, 0);
-                        if let Some(client) = state.get_client(client_port) {
-                            info!("Client connection successful on port {}", src_port);
-                            client.on_connect_success(src_port);
-                            if let Some(data) = client.get_write_data(src_port) {
-                                let packet = construct_packet(src_port, VSOCK_OP_RW, &data)?;
-                                state.add_to_write_queue(packet);
-                            }
-                        }
-                    }
-                }
-                VSOCK_OP_RST => {
-                    info!("Received reset packet: {:?}", packet);
-                    let src_port = packet.hdr().src_port;
-                    if let Some(service_port) = state.get_service_port(src_port) {
-                        info!("Found service connection for port: {:?}", src_port);
-                        if let Some(service) = state.get_listener(service_port) {
-                            service.on_reset(src_port);
-                        }
-                        state.remove_connection(src_port);
-                    } else if let Some(client_port) = state.get_client_port(src_port) {
-                        info!("Found client connection for port: {:?}", src_port);
-                        if let Some(client) = state.get_client(client_port) {
-                            client.on_reset(src_port);
-                        }
-                        state.remove_connection(src_port);
-                    } else {
-                        info!(
-                            "No connection found for port: {:?}, ignoring reset",
-                            src_port
-                        );
-                    }
-                }
-                VSOCK_OP_RW => {
-                    info!("Received rw packet: {:?}", packet);
-                    let src_port = packet.hdr().src_port;
-                    if let Some(service_port) = state.get_service_port(src_port) {
-                        // Find the service for this connection using the service_port
-                        if let Some(service) = state.get_listener(service_port) {
-                            service.on_data(src_port, packet.payload());
-                        }
-                    } else if let Some(client_port) = state.get_client_port(src_port) {
-                        // Find the client for this connection using the client_port
-                        if let Some(client) = state.get_client(client_port) {
-                            client.on_data(src_port, packet.payload());
-                        }
-                    } else {
-                        info!("No connection found for port: {:?}", src_port);
-                    }
-                }
-                VSOCK_OP_SHUTDOWN => {
-                    info!("Received shutdown packet: {:?}", packet);
-                    let src_port = packet.hdr().src_port;
-                    if let Some(service_port) = state.get_service_port(src_port) {
-                        if let Some(service) = state.get_listener(service_port) {
-                            service.on_shutdown(src_port);
-                        }
-                        state.remove_connection(src_port);
-                    } else if let Some(client_port) = state.get_client_port(src_port) {
-                        if let Some(client) = state.get_client(client_port) {
-                            client.on_shutdown(src_port);
-                        }
-                        state.remove_connection(src_port);
-                    } else {
-                        info!("No connection found for port: {:?} {:?}", src_port, state.get_connection_ports());
-                    }
-                }
-                _ => {
-                    info!("Received unknown packet: {:?}", packet)
-                }
-            }
-        }
-        // walk through all connections and send any pending data
-
-        let connection_ports = state.get_connection_ports();
-        let mut packets_to_send = Vec::new();
-        for port in connection_ports {
-            // Check if service wants to write data
-            if let Some(service_port) = state.get_service_port(port) {
-                if let Some(service) = state.get_listener(service_port) {
-                    if let Some(data) = service.get_write_data(port) {
-                        let packet = construct_packet(port, VSOCK_OP_RW, &data)?;
-                        packets_to_send.push(packet);
-                    }
-
-                    // Check if service wants to shutdown the connection
-                    if service.should_shutdown(port) {
-                        let packet = construct_packet(port, VSOCK_OP_SHUTDOWN, &[])?;
-                        packets_to_send.push(packet);
-                    }
-                }
-            }
-
-            // Check if client wants to write data
-            if let Some(client_port) = state.get_client_port(port) {
-                if let Some(client) = state.get_client(client_port) {
-                    if let Some(data) = client.get_write_data(port) {
-                        let packet = construct_packet(port, VSOCK_OP_RW, &data)?;
-                        packets_to_send.push(packet);
-                    }
-
-                    // Check if client wants to shutdown the connection
-                    if client.should_shutdown(port) {
-                        let packet = construct_packet(port, VSOCK_OP_SHUTDOWN, &[])?;
-                        packets_to_send.push(packet);
-                    }
-                }
-            }
-        }
-        for packet in packets_to_send {
-            state.add_to_write_queue(packet);
-        }
-        info!("Machine cycle = {}", machine.mcycle().unwrap());
+        run_machine_loop_iteration(machine.clone(), state.clone()).await?;
         tokio::task::yield_now().await;
     }
 }
@@ -411,7 +464,7 @@ pub async fn run_machine_loop(
 /// Runs the machine until it yields for a CMIO request.
 pub fn run_machine_until_yield(
     machine: &mut Machine,
-) -> Result<cartesi_machine::types::BreakReason, Box<dyn Error>> {
+) -> Result<cartesi_machine::types::BreakReason, Box<dyn std::error::Error + Send + Sync>> {
     loop {
         let reason = machine.run(u64::MAX)?;
         if machine.iflags_y()? {
@@ -426,13 +479,17 @@ pub fn run_machine_until_yield(
     }
 }
 
-pub fn send_empty_response(machine: &mut Machine) -> Result<(), Box<dyn Error>> {
+pub fn send_empty_response(
+    machine: &mut Machine,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     machine.send_cmio_response(CmioResponseReason::Advance, &[])?;
     Ok(())
 }
 
 /// Receives a vsock packet from the machine.
-pub fn receive_packet(machine: &mut Machine) -> Result<Option<Packet>, Box<dyn Error>> {
+pub fn receive_packet(
+    machine: &mut Machine,
+) -> Result<Option<Packet>, Box<dyn std::error::Error + Send + Sync>> {
     let request = machine.receive_cmio_request()?;
     info!("Received a CMIO request from guest.");
 
@@ -472,7 +529,7 @@ pub fn send_packet(
     guest_port: u32,
     op: u16,
     payload: &[u8],
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("Crafting vsock packet with op {}", op);
 
     let hdr = VirtioVsockHdr {
