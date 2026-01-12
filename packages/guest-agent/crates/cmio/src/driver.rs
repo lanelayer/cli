@@ -1,7 +1,7 @@
 use super::{CmioBuffer, CmioError, CmioSetup, CmioYield, Result};
 use libc::{
-    c_char, c_int, c_void, close, mmap, munmap, open, O_RDWR, PROT_READ, PROT_WRITE, MAP_FAILED,
-    MAP_SHARED,
+    c_char, c_int, c_void, close, mmap, munmap, open, MAP_FAILED, MAP_SHARED, O_RDWR, PROT_READ,
+    PROT_WRITE,
 };
 use nix::{ioctl_read, ioctl_readwrite};
 use std::ptr;
@@ -180,4 +180,4 @@ impl Drop for CmioIoDriver {
             close(self.fd);
         }
     }
-} 
+}

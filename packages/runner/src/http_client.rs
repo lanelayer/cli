@@ -305,7 +305,7 @@ pub fn make_http_request(
     method: &str,
     path: &str,
     host: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Initiate the connection
     state.initiate_connection(client_port, target_cid, target_port)?;
 
@@ -324,7 +324,7 @@ pub fn start_health_check(
     client_port: u32,
     target_cid: u32,
     target_port: u32,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!(
         "Starting health check from client {} to {}:{}",
         client_port, target_cid, target_port
@@ -346,12 +346,12 @@ pub fn make_http_post_request(
     host: &str,
     body: &[u8],
     content_type: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Queue the POST request metadata in the client
     let client = state.get_client(client_port).ok_or_else(|| {
         let error_msg = format!("No HTTP client found for port {}", client_port);
         error!("{}", error_msg);
-        Box::<dyn std::error::Error>::from(error_msg)
+        error_msg
     })?;
 
     client.queue_post_request(
@@ -367,7 +367,12 @@ pub fn make_http_post_request(
     );
 
     // Initiate the connection
-    state.initiate_connection(client_port, target_cid, target_port)?;
+    if let Err(e) = state.initiate_connection(client_port, target_cid, target_port) {
+        return Err(Box::<dyn std::error::Error + Send + Sync>::from(format!(
+            "Failed to initiate connection: {}",
+            e
+        )));
+    }
 
     Ok(())
 }

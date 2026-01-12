@@ -3,15 +3,19 @@ use env_logger::Builder;
 use log::{info, LevelFilter};
 use std::io::Write;
 use std::path::Path;
+mod health_check_handler;
 mod http_client;
 mod http_health_check_client;
 mod http_server;
 mod utils;
+mod webhook_completion_handler;
 mod webhook_delivery;
+use crate::health_check_handler::HealthCheckHandler;
 use crate::http_client::start_health_check;
 use crate::http_health_check_client::add_http_health_check_client;
 use crate::http_server::add_http_server;
 use crate::utils::{run_machine_loop, RunnerState};
+use crate::webhook_completion_handler::WebhookCompletionHandler;
 use crate::webhook_delivery::{add_webhook_delivery_service, Submission};
 use std::sync::Arc;
 use std::time::Duration;
@@ -33,13 +37,94 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let state = Arc::new(Mutex::new(RunnerState::new()));
 
-    let (mut health_rx, mut submit_done_rx) = {
+    // Create a simple health check handler for the binary
+    struct SimpleHealthCheckHandler {
+        success: bool,
+        failure: bool,
+    }
+
+    impl HealthCheckHandler for SimpleHealthCheckHandler {
+        fn on_health_check_success(&mut self) {
+            self.success = true;
+        }
+
+        fn on_health_check_failure(&mut self) {
+            self.failure = true;
+        }
+
+        fn should_proceed(&self) -> bool {
+            self.success
+        }
+
+        fn has_failed(&self) -> bool {
+            self.failure
+        }
+
+        fn reset(&mut self) {
+            self.success = false;
+            self.failure = false;
+        }
+    }
+
+    let health_check_handler: Arc<std::sync::Mutex<dyn HealthCheckHandler>> =
+        Arc::new(std::sync::Mutex::new(SimpleHealthCheckHandler {
+            success: false,
+            failure: false,
+        }));
+
+    // Note: The binary still uses channels for simplicity, but the library uses trait-based handlers
+    let (sender, mut receiver) = tokio::sync::mpsc::channel(2);
+
+    // Create a simple webhook completion handler that uses a channel
+    struct ChannelWebhookHandler {
+        sender: tokio::sync::mpsc::Sender<bool>,
+        success: bool,
+    }
+
+    impl runner::WebhookCompletionHandler for ChannelWebhookHandler {
+        fn on_webhook_success(&mut self) {
+            self.success = true;
+            let _ = self.sender.try_send(true);
+        }
+
+        fn on_webhook_failure(&mut self) {
+            let _ = self.sender.try_send(false);
+        }
+
+        fn has_succeeded(&self) -> bool {
+            self.success
+        }
+
+        fn has_failed(&self) -> bool {
+            !self.success
+        }
+
+        fn reset(&mut self) {
+            self.success = false;
+        }
+    }
+
+    let webhook_handler: Arc<std::sync::Mutex<dyn runner::WebhookCompletionHandler>> =
+        Arc::new(std::sync::Mutex::new(ChannelWebhookHandler {
+            sender,
+            success: false,
+        }));
+
+    {
         let mut state_guard = state.lock().await;
         add_http_server(&mut state_guard);
-        let health_rx = add_http_health_check_client(&mut state_guard, 9000, 10);
-        let submit_done_rx = add_webhook_delivery_service(&mut state_guard, 9002, 3);
-        (health_rx, submit_done_rx)
-    };
+        add_http_health_check_client(
+            &mut state_guard,
+            9000,
+            Some(Arc::clone(&health_check_handler)),
+        );
+        add_webhook_delivery_service(
+            &mut state_guard,
+            9002,
+            3,
+            Some(Arc::clone(&webhook_handler)),
+        );
+    }
 
     let machine_for_loop = Arc::clone(&machine);
     let state_for_loop = Arc::clone(&state);
@@ -53,18 +138,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     };
 
+    let health_check_handler_for_fut = Arc::clone(&health_check_handler);
     let health_check_and_webhook_fut = async move {
         const MAX_ATTEMPTS: u32 = 20;
 
         info!("Waiting for health check to succeed...");
         let mut succeeded = false;
         for attempt in 1..=MAX_ATTEMPTS {
-            // Clear any leftover messages from the health channel so a late arrival from a prior attempt can't be mistaken for a new successful health check.
-            while health_rx.try_recv().is_ok() {
-                info!(
-                    "Drained stale health check message before attempt {}",
-                    attempt
-                );
+            {
+                let mut handler_guard = health_check_handler_for_fut.lock().unwrap();
+                handler_guard.reset();
             }
 
             {
@@ -78,25 +161,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
             }
 
-            match time::timeout(Duration::from_secs(5), health_rx.recv()).await {
-                Ok(Some(true)) => {
+            // Wait a bit for the health check to complete
+            time::sleep(Duration::from_secs(5)).await;
+
+            {
+                let handler_guard = health_check_handler_for_fut.lock().unwrap();
+                if handler_guard.should_proceed() {
                     info!("Health check succeeded! Proceeding with webhook submission...");
                     succeeded = true;
                     break;
-                }
-                Ok(Some(_)) => {
-                    info!("Received non-success health check message, continuing attempts...");
-                }
-                Ok(None) => {
-                    info!("Health channel closed unexpectedly");
-                    break;
-                }
-                Err(_) => {
-                    info!("Health check attempt {} timed out", attempt);
+                } else if handler_guard.has_failed() {
+                    info!("Health check attempt {} failed", attempt);
+                } else {
+                    info!("Health check attempt {} still in progress", attempt);
                 }
             }
-
-            time::sleep(Duration::from_secs(5)).await;
         }
 
         if !succeeded {

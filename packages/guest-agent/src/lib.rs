@@ -7,10 +7,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use vsock::{VMADDR_CID_ANY, VsockAddr, VsockListener, VsockStream};
+use vsock::{VsockAddr, VsockListener, VsockStream, VMADDR_CID_ANY};
 use vsock_protocol::{
-    Packet, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RST, VSOCK_OP_RW, VSOCK_OP_SHUTDOWN,
-    VSOCK_TYPE_STREAM, VirtioVsockHdr,
+    Packet, VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RST, VSOCK_OP_RW,
+    VSOCK_OP_SHUTDOWN, VSOCK_TYPE_STREAM,
 };
 
 const CMIO_QUEUE_ID: u16 = 0x27;

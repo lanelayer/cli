@@ -1,8 +1,6 @@
-use super::{CmioError, Result, CmioYield};
+use super::{CmioError, CmioYield, Result};
 use std::collections::HashMap;
-use vsock_protocol::{
-    VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RW,
-};
+use vsock_protocol::{VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RW};
 
 /// Mock IO driver for CMIO operations for development/testing on non-Linux hosts.
 #[derive(Default)]
@@ -69,7 +67,8 @@ impl CmioIoDriver {
                 return match hdr.op {
                     VSOCK_OP_RESPONSE => {
                         // Connection is established. Store response for the host.
-                        self.pending_responses.insert(hdr.dst_port, tx_data.to_vec());
+                        self.pending_responses
+                            .insert(hdr.dst_port, tx_data.to_vec());
                         Ok(Vec::new())
                     }
                     VSOCK_OP_RW => {

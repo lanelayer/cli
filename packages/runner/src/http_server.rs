@@ -1,5 +1,5 @@
 use crate::utils::{RunnerState, Service};
-use log::{info, error, warn};
+use log::{error, info, warn};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -101,9 +101,14 @@ impl HttpServer {
         Some(response.as_bytes().to_vec())
     }
 
-    fn handle_kv_request(&mut self, method: &str, path: &str, request_str: &str) -> Option<Vec<u8>> {
+    fn handle_kv_request(
+        &mut self,
+        method: &str,
+        path: &str,
+        request_str: &str,
+    ) -> Option<Vec<u8>> {
         let key = path.strip_prefix("/kv/")?;
-        
+
         match method {
             "GET" => {
                 info!("KV GET request received for key: '{}'", key);
@@ -111,7 +116,11 @@ impl HttpServer {
                     match kv_store.lock() {
                         Ok(store) => {
                             if let Some(value) = store.get_kv(key) {
-                                info!("KV GET found key='{}' (value size: {} bytes)", key, value.len());
+                                info!(
+                                    "KV GET found key='{}' (value size: {} bytes)",
+                                    key,
+                                    value.len()
+                                );
                                 let response = format!(
                                     "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n",
                                     value.len()
@@ -123,7 +132,9 @@ impl HttpServer {
                         }
                         Err(e) => {
                             error!("KV GET failed for key: '{}' - lock error: {}", key, e);
-                            return Some(self.build_error_response(500, &format!("Lock error: {}", e)));
+                            return Some(
+                                self.build_error_response(500, &format!("Lock error: {}", e)),
+                            );
                         }
                     }
                 }
@@ -131,24 +142,35 @@ impl HttpServer {
                 Some(self.build_error_response(404, "Key not found"))
             }
             "POST" => {
-                let body = request_str
-                    .split("\r\n\r\n")
-                    .nth(1)
-                    .unwrap_or("");
+                let body = request_str.split("\r\n\r\n").nth(1).unwrap_or("");
                 let value = body.as_bytes().to_vec();
-                
-                info!("KV POST request received for key: '{}' (value size: {} bytes)", key, value.len());
+
+                info!(
+                    "KV POST request received for key: '{}' (value size: {} bytes)",
+                    key,
+                    value.len()
+                );
                 if value.len() <= 100 {
-                    info!("KV POST request body: {:?}", String::from_utf8_lossy(&value));
+                    info!(
+                        "KV POST request body: {:?}",
+                        String::from_utf8_lossy(&value)
+                    );
                 } else {
-                    info!("KV POST request body (first 100 bytes): {:?}...", String::from_utf8_lossy(&value[..100]));
+                    info!(
+                        "KV POST request body (first 100 bytes): {:?}...",
+                        String::from_utf8_lossy(&value[..100])
+                    );
                 }
-                
+
                 if let Some(kv_store) = &self.kv_store {
                     match kv_store.lock() {
                         Ok(mut store) => {
                             store.insert_kv(key.to_string(), value.clone());
-                            info!("KV POST successful for key: '{}' (value size: {} bytes)", key, value.len());
+                            info!(
+                                "KV POST successful for key: '{}' (value size: {} bytes)",
+                                key,
+                                value.len()
+                            );
                             Some("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 17\r\n\r\n{\"status\":\"ok\"}".as_bytes().to_vec())
                         }
                         Err(e) => {
@@ -181,21 +203,24 @@ impl HttpServer {
                 }
             }
             _ => {
-                warn!("KV request with unsupported method: {} for key: {}", method, key);
+                warn!(
+                    "KV request with unsupported method: {} for key: {}",
+                    method, key
+                );
                 Some(self.build_error_response(405, "Method Not Allowed"))
             }
         }
     }
 
     fn build_error_response(&self, status_code: u16, message: &str) -> Vec<u8> {
-
         format!(
             "HTTP/1.1 {} {}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
             status_code,
             "Internal Server Error",
             message.len(),
             message
-        ).into_bytes()
+        )
+        .into_bytes()
     }
 }
 
@@ -208,11 +233,11 @@ impl Service for HttpServer {
 
     fn on_data(&mut self, port: u32, data: &[u8]) {
         info!("HTTP server received {} bytes on port {}", data.len(), port);
-   
+
         if let Some(connection) = self.connections.get_mut(&port) {
-                connection.buffer.extend_from_slice(data);
-            } else {
-                return;
+            connection.buffer.extend_from_slice(data);
+        } else {
+            return;
         }
         // Check if we need to process this data
         let should_process = {
@@ -222,7 +247,7 @@ impl Service for HttpServer {
             } else {
                 false
             }
-        };            
+        };
 
         if should_process {
             // Get buffer data
