@@ -1,0 +1,379 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.generateLinuxKitYaml = generateLinuxKitYaml;
+exports.generateDockerCompose = generateDockerCompose;
+const fs_1 = require("fs");
+const path_1 = require("path");
+const process_1 = require("process");
+const os_1 = require("os");
+const cli_1 = require("./cli");
+const keys_1 = require("./keys");
+const crypto_1 = require("crypto");
+const constants_1 = require("./constants");
+function getCacheDirectory(ociTarPath) {
+    const pathHash = (0, cli_1.getPathHash)();
+    const baseCacheDir = (0, path_1.join)((0, os_1.homedir)(), ".cache", "lane", pathHash);
+    if (ociTarPath) {
+        // Extract the image tag from the OCI tar path to match build.ts logic
+        // The OCI tar path format is: /path/to/cache/image-tag.tar
+        const fileName = ociTarPath.split("/").pop() || "";
+        const imageTag = fileName.replace(".tar", "");
+        // Create a hash of the image tag for cache directory (same as build.ts)
+        const imageHash = (0, crypto_1.createHash)("sha256")
+            .update(imageTag)
+            .digest("hex")
+            .substring(0, 8);
+        return (0, path_1.join)(baseCacheDir, imageHash);
+    }
+    return baseCacheDir;
+}
+function generateLinuxKitYaml(imageTag, profile, cacheDir, ociTarPath, guestAgentImage) {
+    const pathHash = (0, cli_1.getPathHash)();
+    // Determine if debug tools should be included
+    // stage and prod-debug share the same base image (with debug tools)
+    // stage-release and prod share the same base image (without debug tools)
+    const includeDebugTools = profile === "dev" || profile === "stage" || profile === "prod-debug";
+    // Generate SSH debug keys only if debug tools are included
+    let sshKeyPath;
+    let sshKeyPubPath;
+    if (includeDebugTools) {
+        sshKeyPath = cacheDir
+            ? (0, path_1.join)(cacheDir, "ssh.debug-key")
+            : (0, path_1.join)((0, process_1.cwd)(), "ssh.debug-key");
+        sshKeyPubPath = cacheDir
+            ? (0, path_1.join)(cacheDir, "ssh.debug-key.pub")
+            : (0, path_1.join)((0, process_1.cwd)(), "ssh.debug-key.pub");
+        if (!(0, fs_1.existsSync)(sshKeyPath)) {
+            (0, fs_1.writeFileSync)(sshKeyPath, keys_1.sshDebugKey);
+            (0, fs_1.chmodSync)(sshKeyPath, 0o600);
+        }
+        if (!(0, fs_1.existsSync)(sshKeyPubPath)) {
+            (0, fs_1.writeFileSync)(sshKeyPubPath, keys_1.sshDebugKeyPub);
+        }
+    }
+    // Use the image tag directly since the OCI image is loaded into Docker
+    // LinuxKit will resolve this through its cache after import
+    const imageReference = imageTag;
+    // Guest agent image - use parameter if provided, otherwise fall back to environment variable or default
+    const finalGuestAgentImage = guestAgentImage ||
+        process.env.CUSTOM_GUEST_AGENT_IMAGE ||
+        constants_1.GUEST_AGENT_IMAGE;
+    // Build onboot section - dhcpcd is always needed for network configuration
+    const onboot = `onboot:
+  - name: dhcpcd
+    image: ghcr.io/lanelayer/linuxkit-dhcpcd@sha256:3ad775c7f5402fc960d3812bec6650ffa48747fbd9bd73b62ff71b8d0bb72c5a
+    command: ["/sbin/dhcpcd", "--nobackground", "-f", "/dhcpcd.conf", "-1"]
+`;
+    // Build services list conditionally
+    let services = "";
+    if (includeDebugTools) {
+        services += `
+  - name: sshd
+    image: ghcr.io/lanelayer/linuxkit-sshd@sha256:448f0a6f0b30e7f6f4a28ab11268b07ed2fb81a4d4feb1092c0b16a126d33183
+    binds.add:
+      - /root/.ssh:/root/.ssh
+`;
+    }
+    services += `  - name: guest-agent
+    image: ${finalGuestAgentImage}
+    net: host
+    binds:
+      - /dev:/dev
+    capabilities:
+      - all
+    devices:
+      - path: all
+  - name: app
+    image: ${imageReference}
+    net: host
+    capabilities:
+      - CAP_CHOWN
+      - CAP_DAC_OVERRIDE
+      - CAP_FOWNER
+      - CAP_FSETID
+      - CAP_KILL
+      - CAP_SETGID
+      - CAP_SETUID
+      - CAP_SETPCAP
+      - CAP_NET_BIND_SERVICE
+      - CAP_NET_RAW
+      - CAP_SYS_CHROOT
+      - CAP_MKNOD
+      - CAP_AUDIT_WRITE
+      - CAP_SETFCAP
+`;
+    // Build files section conditionally
+    let files = "";
+    if (includeDebugTools) {
+        files = `files:
+  - path: root/.ssh/authorized_keys
+    source: /cache/ssh.debug-key.pub
+    mode: "0600"
+  - path: usr/bin/perf-qemu-riscv64
+    source: /usr/share/qemu/perf-qemu-riscv64
+    mode: "0755"
+  - path: usr/bin/perf-cm-riscv64
+    source: /usr/share/qemu/perf-cm-riscv64
+    mode: "0755"
+`;
+    }
+    const yamlConfig = `init:
+  - ghcr.io/lanelayer/linuxkit-init@sha256:fd6878920ee9dd846689fc79839a82dc40f3cf568f16621f0e97a8b7b501df62
+  - ghcr.io/lanelayer/linuxkit-runc@sha256:3f0a1027ab7507f657cafd28abff329366c0e774714eac48c4d4c10f46778596
+  - ghcr.io/lanelayer/linuxkit-containerd@sha256:97a307ea9e3eaa21d378f903f067d742bd66abd49e5ff483ae85528bed6d4e8a
+${onboot}services:
+${services}${files}`;
+    // Use a shared filename based on debug tools inclusion, not specific profile
+    const debugSuffix = includeDebugTools ? "-debug" : "-release";
+    const yamlPath = cacheDir
+        ? (0, path_1.join)(cacheDir, `vc${debugSuffix}.yml`)
+        : (0, path_1.join)((0, process_1.cwd)(), `vc${debugSuffix}.yml`);
+    (0, fs_1.writeFileSync)(yamlPath, yamlConfig);
+    console.log(`Generated LinuxKit YAML: ${yamlPath}`);
+    return yamlPath;
+}
+function generateDockerCompose(imageTag, profile, ociTarPath, cacheDir, turbo = false, guestAgentImage, hot = false) {
+    // Use the image tag directly since the OCI image is loaded into Docker
+    const imageReference = imageTag;
+    const pathHash = (0, cli_1.getPathHash)();
+    // Use the provided cache directory or fall back to calculating it
+    const finalCacheDir = cacheDir || getCacheDirectory(ociTarPath);
+    // For stage and prod profiles, use snapshot-builder with different commands
+    let isolatedServiceConfig;
+    if (profile === "stage" || profile === "stage-release") {
+        // Determine the correct squashfs file based on debug tools inclusion
+        const includeDebugTools = profile === "stage";
+        const debugSuffix = includeDebugTools ? "-debug" : "-release";
+        isolatedServiceConfig = {
+            image: constants_1.LANE_SNAPSHOT_BUILDER_IMAGE,
+            container_name: `${pathHash}-lane-isolated-service`,
+            hostname: "lane-isolated-service",
+            networks: ["internal_net"],
+            volumes: [
+                `${finalCacheDir}:/work`,
+                `${pathHash}_lane_shared_data:/media/lane`,
+            ],
+            command: [
+                "/bin/bash",
+                "-c",
+                `RUST_LOG=info vhost-device-vsock --guest-cid=4 --forward-cid=1 --forward-listen=8080+8022 --socket=/tmp/vhost.socket --tx-buffer-size=65536 --queue-size=1024 &
+        socat tcp-listen:8080,fork VSOCK-CONNECT:1:8080 &
+        socat tcp-listen:8022,fork VSOCK-CONNECT:1:8022 &
+        sleep 1
+        ps ux
+        qemu-system-riscv64 \\
+  --machine virt,memory-backend=mem0 \\
+  -cpu rv64,zihintntl=false,zihintpause=true,sscofpmf=true,sstc=true,zicbom=false,zicboz=false,zawrs=false,zfa=false,zba=false,zbb=false,zbc=false,zbs=false,svadu=false,svinval=false,svpbmt=false,svnapot=false,svade=false,h=false,sv48=on \\
+  --kernel /work/vc${debugSuffix}.qemu-kernel \\
+  -nographic \\
+  ${turbo ? "-smp $(nproc) \\" : "\\"}
+  -object memory-backend-memfd,id=mem0,size=512M \\
+  -append "root=/dev/vda rootfstype=squashfs console=ttyS0" \\
+  -drive "file=/work/vc${debugSuffix}.squashfs,format=raw,if=virtio" \\
+  -chardev socket,id=c,path=/tmp/vhost.socket \\
+  -device vhost-user-vsock-pci,chardev=c \\
+  -monitor none \\
+  -serial stdio`,
+            ],
+            tty: true,
+            stdin_open: true,
+            restart: "no",
+            healthcheck: {
+                test: ["CMD", "curl", "-f", "http://localhost:8080/health"],
+                interval: "30s",
+                timeout: "10s",
+                retries: 3,
+                start_period: "40s",
+            },
+            devices: ["/dev/vsock"],
+            privileged: true,
+            labels: [
+                "traefik.enable=true",
+                "traefik.http.routers.isolated.rule=PathPrefix(`/`)",
+                "traefik.http.routers.isolated.entrypoints=web",
+                "traefik.http.services.isolated.loadbalancer.server.port=8080",
+                "traefik.http.services.isolated.loadbalancer.server.scheme=http",
+                `lane.profile=${profile}`,
+                `lane.image.tag=${imageTag}`,
+                `lane.image.path=${ociTarPath || "none"}`,
+                `lane.build.timestamp=${new Date().toISOString()}`,
+                `lane.path.hash=${pathHash}`,
+            ],
+        };
+    }
+    else if (profile === "prod" || profile === "prod-debug") {
+        // Determine the correct squashfs file based on debug tools inclusion
+        const includeDebugTools = profile === "prod-debug";
+        const debugSuffix = includeDebugTools ? "-debug" : "-release";
+        isolatedServiceConfig = {
+            image: constants_1.LANE_SNAPSHOT_BUILDER_IMAGE,
+            container_name: `${pathHash}-lane-isolated-service`,
+            hostname: "lane-isolated-service",
+            networks: ["internal_net"],
+            volumes: [
+                `${finalCacheDir}:/work`,
+                `${pathHash}_lane_shared_data:/media/lane`,
+            ],
+            command: [
+                "cartesi-machine",
+                `--flash-drive=label:root,filename:/work/vc${debugSuffix}.squashfs`,
+                "--ram-length=1024Mi",
+                "--append-bootargs=loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro",
+                "--skip-root-hash-check",
+                "--virtio-net=user",
+                "-p=0.0.0.0:8080:10.0.2.15:8080/tcp",
+                "-p=0.0.0.0:8022:10.0.2.15:22/tcp",
+            ],
+            tty: true,
+            stdin_open: true,
+            restart: "no",
+            healthcheck: {
+                test: ["CMD", "curl", "-f", "http://localhost:8080/health"],
+                interval: "30s",
+                timeout: "10s",
+                retries: 3,
+                start_period: "40s",
+            },
+            labels: [
+                "traefik.enable=true",
+                "traefik.http.routers.isolated.rule=PathPrefix(`/`)",
+                "traefik.http.routers.isolated.entrypoints=web",
+                "traefik.http.services.isolated.loadbalancer.server.port=8080",
+                "traefik.http.services.isolated.loadbalancer.server.scheme=http",
+                `lane.profile=${profile}`,
+                `lane.image.tag=${imageTag}`,
+                `lane.image.path=${ociTarPath || "none"}`,
+                `lane.build.timestamp=${new Date().toISOString()}`,
+                `lane.path.hash=${pathHash}`,
+            ],
+        };
+    }
+    else {
+        // Default for dev profile
+        const volumes = [`${pathHash}_lane_shared_data:/media/lane`];
+        // Add source code mount for hot reloading
+        if (hot) {
+            const currentDir = process.cwd();
+            volumes.push(`${currentDir}:/app`);
+        }
+        isolatedServiceConfig = {
+            image: imageReference,
+            container_name: `${pathHash}-lane-isolated-service`,
+            hostname: "lane-isolated-service",
+            networks: ["internal_net"],
+            volumes: volumes,
+            restart: "no",
+            environment: {
+                CORE_LANE_URL: process.env.CORE_LANE_URL || "http://core-lane:8545",
+            },
+            // Remove command override; Dockerfile entrypoint handles hot reload
+            healthcheck: {
+                test: ["CMD", "curl", "-f", "http://localhost:8080/health"],
+                interval: "30s",
+                timeout: "10s",
+                retries: 3,
+                start_period: "40s",
+            },
+            labels: [
+                "traefik.enable=true",
+                "traefik.http.routers.isolated.rule=PathPrefix(`/`)",
+                "traefik.http.routers.isolated.entrypoints=web",
+                "traefik.http.services.isolated.loadbalancer.server.port=8080",
+                "traefik.http.services.isolated.loadbalancer.server.scheme=http",
+                `lane.profile=${profile}`,
+                `lane.image.tag=${imageTag}`,
+                `lane.image.path=${ociTarPath || "none"}`,
+                `lane.build.timestamp=${new Date().toISOString()}`,
+                `lane.path.hash=${pathHash}`,
+                ...(hot ? [`lane.hot.reload=true`] : []),
+            ],
+        };
+    }
+    const composeConfig = {
+        services: {
+            traefik: {
+                image: "traefik:v2.10",
+                container_name: `${pathHash}-lane-traefik`,
+                hostname: "lane-traefik",
+                restart: "no",
+                command: [
+                    "--api.insecure=true",
+                    "--api.dashboard=false",
+                    "--api.debug=true",
+                    "--providers.docker=true",
+                    "--providers.docker.exposedbydefault=false",
+                    "--entrypoints.web.address=:8080",
+                    "--entrypoints.traefik.address=:9000",
+                ],
+                ports: ["8080:8080"],
+                volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"],
+                networks: ["internal_net", "external_net"],
+                labels: [
+                    "traefik.enable=true",
+                    "traefik.http.routers.traefik.rule=PathPrefix(`/api`) || PathPrefix(`/dashboard`)",
+                    "traefik.http.routers.traefik.service=api@internal",
+                    "traefik.http.routers.traefik.entrypoints=traefik",
+                ],
+            },
+            isolated_service: isolatedServiceConfig,
+            // K/V service only available in dev mode (ephemeral storage)
+            // Production uses blockchain-anchored persistent storage
+            ...(profile === "dev"
+                ? {
+                    kv_service: {
+                        build: {
+                            context: (0, path_1.join)(__dirname, "../../kv-service"),
+                            dockerfile: "Dockerfile",
+                        },
+                        container_name: `${pathHash}-lane-kv-service`,
+                        hostname: "kv-service",
+                        networks: ["internal_net"],
+                        restart: "no",
+                        healthcheck: {
+                            test: ["CMD", "curl", "-f", "http://localhost:3000/health"],
+                            interval: "30s",
+                            timeout: "10s",
+                            retries: 3,
+                            start_period: "10s",
+                        },
+                        labels: [
+                            "traefik.enable=true",
+                            "traefik.http.routers.kv.rule=PathPrefix(`/kv`)",
+                            "traefik.http.routers.kv.entrypoints=web",
+                            "traefik.http.routers.kv.priority=100",
+                            "traefik.http.services.kv.loadbalancer.server.port=3000",
+                        ],
+                    },
+                }
+                : {}),
+            internet_service: {
+                image: "alpine",
+                container_name: `${pathHash}-lane-guest-agent`,
+                hostname: "lane-guest-agent",
+                restart: "no",
+                command: 'sh -c "mkdir -p /media/lane/transient && sleep infinity"',
+                networks: ["internal_net", "external_net"],
+                volumes: [`${pathHash}_lane_shared_data:/media/lane`],
+            },
+        },
+        networks: {
+            internal_net: {
+                driver: "bridge",
+                internal: true,
+            },
+            external_net: {
+                driver: "bridge",
+            },
+        },
+        volumes: {
+            [`${pathHash}_lane_shared_data`]: {
+                driver: "local",
+            },
+        },
+    };
+    // Write the Docker Compose file to the base directory (where other functions expect it)
+    // but the volume mounts point to the subdirectory where build artifacts are stored
+    const composePath = (0, path_1.join)((0, cli_1.getComposeCacheDirectory)(), "docker-compose.dev.json");
+    (0, fs_1.writeFileSync)(composePath, JSON.stringify(composeConfig, null, 2));
+    return composePath;
+}
