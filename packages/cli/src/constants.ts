@@ -1,4 +1,4 @@
 export const LANE_SNAPSHOT_BUILDER_IMAGE =
-  "ghcr.io/lanelayer/lane-snapshot-builder@sha256:4380b751c903e9c314f43d615d455d4f45938fbedc38c4feb5eb6c734c18b96b";
+  "ghcr.io/lanelayer/lane-snapshot-builder@sha256:8c9e5a2838040be2c8979dfc197292cbfa46f9944f29b8af84c98edcba8f7ca0";
 export const GUEST_AGENT_IMAGE =
-  "ghcr.io/lanelayer/lane-guest-agent@sha256:3095c655c57a0cd8dd919cc0688d0e5d546f37592bedb6315466e67b53ea69a1";
+  "ghcr.io/lanelayer/lane-guest-agent@sha256:70a659bd67117e0cda9281220bdd084dd941c0dc4eadb167cbd10d9fe8a1f281";

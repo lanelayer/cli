@@ -81,23 +81,17 @@ jobs:
           node ../../packages/cli/dist/cli.js up stage-release || (node ../../packages/cli/dist/cli.js logs && false)
           node ../../packages/cli/dist/cli.js down
           node ../../packages/cli/dist/cli.js prune
-          echo "Testing prod profile build..."
-          node ../../packages/cli/dist/cli.js build prod 
-          node ../../packages/cli/dist/cli.js up prod || (node ../../packages/cli/dist/cli.js logs && false)
-          node ../../packages/cli/dist/cli.js down
-          node ../../packages/cli/dist/cli.js prune
-          echo "Testing prod-debug profile build..."
+          echo "Testing prod profile build (up disabled)..."
+          node ../../packages/cli/dist/cli.js build prod
+          echo "Testing prod-debug profile build (up disabled)..."
           node ../../packages/cli/dist/cli.js build prod-debug
-          node ../../packages/cli/dist/cli.js up prod-debug || (node ../../packages/cli/dist/cli.js logs && false)
-          node ../../packages/cli/dist/cli.js down
-          node ../../packages/cli/dist/cli.js prune
 
       - name: Test CLI commands across profiles
         run: |
           cd packages/sample-python
 
-          # Test each profile with appropriate command testing
-          for profile in dev stage stage-release prod prod-debug; do
+          # Test each profile with appropriate command testing (prod and prod-debug excluded - up disabled)
+          for profile in dev stage stage-release; do
             echo "=== Testing $profile profile ==="
             
             # Build and start the environment

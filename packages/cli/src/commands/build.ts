@@ -341,6 +341,15 @@ export function handleUpCommand(args: string[]): void {
     }
   }
 
+  // Prevent "up" with prod and prod-debug profiles (unless explicitly allowed via environment variable)
+  if ((profile === "prod" || profile === "prod-debug") && !process.env.LANE_ALLOW_PROD_UP) {
+    console.error(`❌ Error: 'lane up ${profile}' is currently disabled.`);
+    console.error("   Production environments should be deployed via 'lane build' and 'lane export'.");
+    console.error("   For local testing, use 'stage' or 'stage-release' profiles instead.");
+    console.error("   To bypass this check (for testing only), set LANE_ALLOW_PROD_UP=1");
+    process.exit(1);
+  }
+
   // Auto-detect depot.json if neither --depot nor --no-depot was specified
   if (!useDepot && !noDepot) {
     const depotJsonPath = join(cwd(), "depot.json");
