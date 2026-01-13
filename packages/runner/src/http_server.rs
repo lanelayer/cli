@@ -15,16 +15,13 @@ pub trait KvStore: Send + Sync {
 pub struct HttpServer {
     port: u32,
     connections: HashMap<u32, HttpConnection>,
-    pending_responses: HashMap<u32, Vec<u8>>,
     kv_store: Option<Arc<std::sync::Mutex<dyn KvStore>>>,
 }
 
 struct HttpConnection {
     port: u32,
     buffer: Vec<u8>,
-    request_complete: bool,
-    response_ready: bool,
-    response_sent: bool,
+    pending_responses: std::collections::VecDeque<Vec<u8>>,
 }
 
 impl HttpConnection {
@@ -32,9 +29,7 @@ impl HttpConnection {
         Self {
             port,
             buffer: Vec::new(),
-            request_complete: false,
-            response_ready: false,
-            response_sent: false,
+            pending_responses: std::collections::VecDeque::new(),
         }
     }
 }
@@ -45,7 +40,6 @@ impl HttpServer {
         Self {
             port,
             connections: HashMap::new(),
-            pending_responses: HashMap::new(),
             kv_store: None,
         }
     }
@@ -55,8 +49,53 @@ impl HttpServer {
         Self {
             port,
             connections: HashMap::new(),
-            pending_responses: HashMap::new(),
             kv_store: Some(kv_store),
+        }
+    }
+
+    /// Parse Content-Length header from HTTP request
+    fn parse_content_length(header_lines: &[&str]) -> Option<usize> {
+        for line in header_lines {
+            if line.to_lowercase().starts_with("content-length:") {
+                if let Some(len_str) = line.split(':').nth(1) {
+                    if let Ok(len) = len_str.trim().parse::<usize>() {
+                        return Some(len);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract a complete HTTP request from the buffer
+    fn extract_request(buffer: &[u8]) -> Option<(Vec<u8>, usize)> {
+        let buffer_str = match std::str::from_utf8(buffer) {
+            Ok(s) => s,
+            Err(_) => return None,
+        };
+
+        // Find the header/body separator
+        let header_end = buffer_str.find("\r\n\r\n")?;
+        let header = &buffer[..header_end + 4];
+        let header_str = &buffer_str[..header_end];
+        let header_lines: Vec<&str> = header_str.lines().collect();
+
+        // Check if there's a Content-Length header
+        let content_length = Self::parse_content_length(&header_lines);
+        let header_size = header_end + 4;
+        
+        if let Some(body_len) = content_length {
+            // Need to read the body
+            let total_size = header_size + body_len;
+            if buffer.len() >= total_size {
+                let request = buffer[..total_size].to_vec();
+                return Some((request, total_size));
+            }
+            // Not enough data yet
+            return None;
+        } else {
+            // No body, just headers
+            return Some((header.to_vec(), header_size));
         }
     }
 
@@ -236,46 +275,37 @@ impl Service for HttpServer {
     fn on_data(&mut self, port: u32, data: &[u8]) {
         info!("HTTP server received {} bytes on port {}", data.len(), port);
 
+        // Add data to buffer
         if let Some(connection) = self.connections.get_mut(&port) {
             connection.buffer.extend_from_slice(data);
         } else {
             return;
         }
-        // Check if we need to process this data
-        let should_process = {
-            if let Some(connection) = self.connections.get(&port) {
-                let buffer_str = String::from_utf8_lossy(&connection.buffer);
-                buffer_str.contains("\r\n\r\n") && !connection.request_complete
-            } else {
-                false
-            }
-        };
 
-        if should_process {
-            // Get buffer data
-            let buffer_data = {
-                if let Some(connection) = self.connections.get(&port) {
-                    connection.buffer.clone()
-                } else {
-                    return;
+        // Process all complete requests in the buffer (HTTP pipelining)
+        loop {
+            // Extract request data and length without holding mutable borrow
+            let (request_data, request_len) = {
+                let connection = match self.connections.get(&port) {
+                    Some(conn) => conn,
+                    None => break,
+                };
+                match Self::extract_request(&connection.buffer) {
+                    Some((req, len)) => (req, len),
+                    None => break, // No complete request available yet
                 }
             };
 
-            // Process request
-            let response = self.handle_http_request(&buffer_data);
+            // Process the request (this may need mutable access to kv_store)
+            let response = self.handle_http_request(&request_data);
 
-            // Update connection
+            // Remove processed request from buffer and queue response
             if let Some(connection) = self.connections.get_mut(&port) {
-                connection.request_complete = true;
+                connection.buffer.drain(..request_len);
                 if let Some(response_data) = response {
-                    self.pending_responses.insert(port, response_data);
-                    connection.response_ready = true;
+                    connection.pending_responses.push_back(response_data);
+                    info!("HTTP server queued response for port {} ({} pending)", port, connection.pending_responses.len());
                 }
-            }
-        } else {
-            // Add data to buffer
-            if let Some(connection) = self.connections.get_mut(&port) {
-                connection.buffer.extend_from_slice(data);
             }
         }
     }
@@ -283,39 +313,30 @@ impl Service for HttpServer {
     fn on_reset(&mut self, port: u32) {
         info!("HTTP server connection reset on port {}", port);
         self.connections.remove(&port);
-        self.pending_responses.remove(&port);
     }
 
     fn on_shutdown(&mut self, port: u32) {
         info!("HTTP server connection shutdown on port {}", port);
         self.connections.remove(&port);
-        self.pending_responses.remove(&port);
     }
 
     fn get_write_data(&mut self, port: u32) -> Option<Vec<u8>> {
-        if let Some(response) = self.pending_responses.remove(&port) {
-            info!(
-                "HTTP server sending {} bytes on port {}",
-                response.len(),
-                port
-            );
-            // Mark that we've sent the response
-            if let Some(connection) = self.connections.get_mut(&port) {
-                connection.response_sent = true;
+        if let Some(connection) = self.connections.get_mut(&port) {
+            if let Some(response) = connection.pending_responses.pop_front() {
+                info!(
+                    "HTTP server sending {} bytes on port {} ({} remaining)",
+                    response.len(),
+                    port,
+                    connection.pending_responses.len()
+                );
+                return Some(response);
             }
-            return Some(response);
         }
         None
     }
 
-    fn should_shutdown(&mut self, port: u32) -> bool {
-        // Shutdown connection after response has been sent
-        if let Some(connection) = self.connections.get(&port) {
-            if connection.response_sent {
-                info!("HTTP server will shutdown connection on port {} after sending response", port);
-                return true;
-            }
-        }
+    fn should_shutdown(&mut self, _port: u32) -> bool {
+        // Keep connections open for HTTP pipelining
         false
     }
 }
