@@ -91,7 +91,7 @@ impl HttpServer {
                 "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 25\r\n\r\n<h1>Hello World!</h1>"
             }
             ("GET", "/health") => {
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 17\r\n\r\n{\"status\":\"ok\"}"
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\n\r\n{\"status\":\"ok\"}"
             }
             _ => {
                 "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\n404 Not Found"
@@ -171,7 +171,7 @@ impl HttpServer {
                                 key,
                                 value.len()
                             );
-                            Some("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 17\r\n\r\n{\"status\":\"ok\"}".as_bytes().to_vec())
+                            Some("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\n\r\n{\"status\":\"ok\"}".as_bytes().to_vec())
                         }
                         Err(e) => {
                             error!("KV POST failed for key: '{}' - lock error: {}", key, e);
@@ -190,7 +190,7 @@ impl HttpServer {
                         Ok(mut store) => {
                             store.remove_kv(key);
                             info!("KV DELETE successful for key: '{}'", key);
-                            Some("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 17\r\n\r\n{\"status\":\"ok\"}".as_bytes().to_vec())
+                            Some("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\n\r\n{\"status\":\"ok\"}".as_bytes().to_vec())
                         }
                         Err(e) => {
                             error!("KV DELETE failed for key: '{}' - lock error: {}", key, e);
