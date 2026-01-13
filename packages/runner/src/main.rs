@@ -1,6 +1,8 @@
 use cartesi_machine::{config::runtime::RuntimeConfig, machine::Machine};
 use env_logger::Builder;
 use log::{info, LevelFilter};
+use std::env;
+use std::fs;
 use std::io::Write;
 use std::path::Path;
 mod health_check_handler;
@@ -11,19 +13,23 @@ mod utils;
 mod webhook_completion_handler;
 mod webhook_delivery;
 use crate::health_check_handler::HealthCheckHandler;
-use crate::http_client::start_health_check;
 use crate::http_health_check_client::add_http_health_check_client;
 use crate::http_server::add_http_server;
-use crate::utils::{run_machine_loop, RunnerState};
-use crate::webhook_completion_handler::WebhookCompletionHandler;
-use crate::webhook_delivery::{add_webhook_delivery_service, Submission};
+use crate::utils::{run_machine_loop_iteration, RunnerState};
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::Mutex;
-use tokio::time;
-/// The path to the machine snapshot.
-const MACHINE_PATH: &str = "../../vc-cm-snapshot-release";
 /// The port the guest machine is listening on.
+#[derive(Debug, Clone, PartialEq)]
+enum ExecutionState {
+    /// Waiting for health check to complete
+    WaitingForHealthCheck,
+    /// Health check failed, should retry
+    HealthCheckFailed,
+    /// Health check succeeded, ready to submit webhook
+    HealthCheckSucceeded,
+    /// Execution complete
+    Done,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -31,11 +37,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("START RUNNER");
     info!("________________________________________________________");
 
+    let mut args_iter = env::args();
+    args_iter.next(); // skip program name
+    let mut from_arg: Option<String> = None;
+    let mut to_arg: Option<String> = None;
+    while let Some(arg) = args_iter.next() {
+        match arg.as_str() {
+            "--from" => {
+                if let Some(val) = args_iter.next() {
+                    from_arg = Some(val);
+                }
+            }
+            "--to" => {
+                if let Some(val) = args_iter.next() {
+                    to_arg = Some(val);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let machine_path = from_arg.unwrap_or_else(|| "../../vc-cm-snapshot-release".to_string());
+    let warmed_snapshot_path = to_arg.unwrap_or_else(|| "./warmed-vc-cm-snapshot".to_string());
+
     let machine = Arc::new(Mutex::new(
-        Machine::load(Path::new(MACHINE_PATH), &RuntimeConfig::default()).unwrap(),
+        Machine::load(Path::new(&machine_path), &RuntimeConfig::default()).unwrap(),
     ));
 
     let state = Arc::new(Mutex::new(RunnerState::new()));
+    let exec_state = Arc::new(Mutex::new(ExecutionState::WaitingForHealthCheck));
 
     // Create a simple health check handler for the binary
     struct SimpleHealthCheckHandler {
@@ -72,44 +102,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             failure: false,
         }));
 
-    // Note: The binary still uses channels for simplicity, but the library uses trait-based handlers
-    let (sender, mut receiver) = tokio::sync::mpsc::channel(2);
-
-    // Create a simple webhook completion handler that uses a channel
-    struct ChannelWebhookHandler {
-        sender: tokio::sync::mpsc::Sender<bool>,
-        success: bool,
-    }
-
-    impl runner::WebhookCompletionHandler for ChannelWebhookHandler {
-        fn on_webhook_success(&mut self) {
-            self.success = true;
-            let _ = self.sender.try_send(true);
-        }
-
-        fn on_webhook_failure(&mut self) {
-            let _ = self.sender.try_send(false);
-        }
-
-        fn has_succeeded(&self) -> bool {
-            self.success
-        }
-
-        fn has_failed(&self) -> bool {
-            !self.success
-        }
-
-        fn reset(&mut self) {
-            self.success = false;
-        }
-    }
-
-    let webhook_handler: Arc<std::sync::Mutex<dyn runner::WebhookCompletionHandler>> =
-        Arc::new(std::sync::Mutex::new(ChannelWebhookHandler {
-            sender,
-            success: false,
-        }));
-
     {
         let mut state_guard = state.lock().await;
         add_http_server(&mut state_guard);
@@ -118,135 +110,125 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             9000,
             Some(Arc::clone(&health_check_handler)),
         );
-        add_webhook_delivery_service(
-            &mut state_guard,
-            9002,
-            3,
-            Some(Arc::clone(&webhook_handler)),
-        );
     }
 
-    let machine_for_loop = Arc::clone(&machine);
-    let state_for_loop = Arc::clone(&state);
-    let state_for_webhook = Arc::clone(&state);
-
-    let machine_loop_fut = async move {
-        info!("Starting machine loop in background...");
-        match run_machine_loop(machine_for_loop, state_for_loop).await {
-            Ok(_) => info!("Machine loop completed."),
-            Err(e) => eprintln!("Machine loop failed: {}", e),
-        }
-    };
-
-    let health_check_handler_for_fut = Arc::clone(&health_check_handler);
-    let health_check_and_webhook_fut = async move {
-        const MAX_ATTEMPTS: u32 = 20;
-
-        info!("Waiting for health check to succeed...");
-        let mut succeeded = false;
-        for attempt in 1..=MAX_ATTEMPTS {
-            {
-                let mut handler_guard = health_check_handler_for_fut.lock().unwrap();
-                handler_guard.reset();
-            }
-
-            {
-                let mut state_guard = state_for_webhook.lock().await;
-                info!(
-                    "Starting health check attempt {}/{}...",
-                    attempt, MAX_ATTEMPTS
-                );
-                if let Err(e) = start_health_check(&mut state_guard, 9000, 1, 8080) {
-                    info!("Failed to start health check attempt {}: {}", attempt, e);
-                }
-            }
-
-            // Wait a bit for the health check to complete
-            time::sleep(Duration::from_secs(5)).await;
-
-            {
-                let handler_guard = health_check_handler_for_fut.lock().unwrap();
-                if handler_guard.should_proceed() {
-                    info!("Health check succeeded! Proceeding with webhook submission...");
-                    succeeded = true;
-                    break;
-                } else if handler_guard.has_failed() {
-                    info!("Health check attempt {} failed", attempt);
-                } else {
-                    info!("Health check attempt {} still in progress", attempt);
-                }
-            }
-        }
-
-        if !succeeded {
-            info!(
-                "Health check failed after {} attempts, skipping webhook submission...",
-                MAX_ATTEMPTS
-            );
-            return;
-        }
-
-        let submission = Submission {
-            tx_hash: None,
-            intent_id: None,
-            user: "demo-user".to_string(),
-            action: "demo-action".to_string(),
-            params: None,
-            timestamp: "now".to_string(),
-            block_height: None,
-            confirmations: None,
-        };
-
-        let body = match serde_json::to_vec(&submission) {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("Failed to serialize submission: {}", e);
-                return;
-            }
-        };
-
+    let machine_arc = Arc::clone(&machine);
+    loop {
         {
-            let mut state_guard = state_for_webhook.lock().await;
-            info!("Queueing webhook submission...");
-            if let Some(client) = state_guard.get_client(9002) {
-                info!("Client found on port 9002");
-                client.queue_post_request(
-                    9002,
-                    "/submit".to_string(),
-                    "localhost:8080".to_string(),
-                    body,
-                    "application/json".to_string(),
-                );
-                info!("Queued webhook submission");
-                if let Err(e) = state_guard.initiate_connection(9002, 1, 8080) {
-                    info!("Failed to initiate webhook connection: {}", e);
-                    eprintln!("Failed to initiate webhook connection: {}", e);
-                    return;
-                } else {
-                    info!("Initiated webhook connection");
-                }
-            } else {
-                info!("Webhook delivery client not found on port 9002");
-                return;
+            let es = exec_state.lock().await.clone();
+            if es == ExecutionState::Done {
+                break;
             }
         }
 
-        info!("Waiting for webhook submission response...");
-        if let Some(done) = submit_done_rx.recv().await {
-            info!("Webhook submission completed: {}", done);
+        if let Err(e) = run_machine_loop_iteration(machine_arc.clone(), state.clone()).await {
+            eprintln!("Machine loop iteration failed: {}", e);
+            break;
         }
 
-        info!("All operations completed successfully");
-    };
+        let current_state = exec_state.lock().await.clone();
+        match current_state {
+            ExecutionState::WaitingForHealthCheck => {
+                {
+                    let mut state_guard = state.lock().await;
+                    if let Err(e) = state_guard.initiate_connection(9000, 1, 8080) {
+                        info!("Failed to initiate health check connection: {}", e);
+                    } else {
+                        info!("Started health check on port {}", 9000);
+                    }
+                }
 
-    tokio::select! {
-        _ = machine_loop_fut => {
-            info!("Machine loop completed (unexpected)");
+                {
+                    let handler = health_check_handler.lock().unwrap();
+                    if handler.should_proceed() {
+                        info!("Health check succeeded! Transitioning to HealthCheckSucceeded");
+                        let mut es = exec_state.lock().await;
+                        *es = ExecutionState::HealthCheckSucceeded;
+                        continue;
+                    } else if handler.has_failed() {
+                        info!("Health check failed, will retry");
+                        let mut es = exec_state.lock().await;
+                        *es = ExecutionState::HealthCheckFailed;
+                        continue;
+                    } else {
+                        tokio::task::yield_now().await;
+                        continue;
+                    }
+                }
+            }
+            ExecutionState::HealthCheckFailed => {
+                info!("Retrying health check...");
+                {
+                    let mut state_guard = state.lock().await;
+                    state_guard.remove_client(9000);
+                }
+
+                {
+                    let mut handler = health_check_handler.lock().unwrap();
+                    handler.reset();
+                }
+
+                {
+                    let mut state_guard = state.lock().await;
+                    add_http_health_check_client(
+                        &mut state_guard,
+                        9000,
+                        Some(Arc::clone(&health_check_handler)),
+                    );
+                }
+
+                {
+                    let mut es = exec_state.lock().await;
+                    *es = ExecutionState::WaitingForHealthCheck;
+                }
+
+                {
+                    let mut state_guard = state.lock().await;
+                    if let Err(e) = state_guard.initiate_connection(9000, 1, 8080) {
+                        info!("Failed to restart health check connection: {}", e);
+                    }
+                }
+                tokio::task::yield_now().await;
+            }
+            ExecutionState::HealthCheckSucceeded => {
+                info!(
+                    "Health check passed — saving warmed machine to {}",
+                    warmed_snapshot_path
+                );
+                {
+                    let mut machine_guard = machine.lock().await;
+                    let snapshot_path = Path::new(&warmed_snapshot_path);
+                    if snapshot_path.exists() {
+                        info!(
+                            "Snapshot path {} exists — removing to allow overwrite",
+                            warmed_snapshot_path
+                        );
+                        if let Err(e) = fs::remove_dir_all(snapshot_path) {
+                            eprintln!(
+                                "Failed to remove existing snapshot {}: {}",
+                                warmed_snapshot_path, e
+                            );
+                        }
+                    }
+
+                    if let Err(e) = machine_guard.store(snapshot_path) {
+                        eprintln!(
+                            "Failed to store warmed machine to {}: {}",
+                            warmed_snapshot_path, e
+                        );
+                    } else {
+                        info!("Warmed machine stored to {}", warmed_snapshot_path);
+                        let mut es = exec_state.lock().await;
+                        *es = ExecutionState::Done;
+                    }
+                }
+                info!("Saved warmed machine.");
+            }
+            ExecutionState::Done => {
+                break;
+            }
         }
-        _ = health_check_and_webhook_fut => {
-            info!("Health check and webhook flow completed, machine loop was running in background");
-        }
-    };
+    }
 
     Ok(())
 }
