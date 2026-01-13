@@ -57,6 +57,29 @@ impl ConnectionManager {
         }
     }
 
+    /// Finds a connection key by trying both possible keys (since packets can come from either direction)
+    fn find_connection_key(&self, hdr: &VirtioVsockHdr) -> Option<ConnectionKey> {
+        // Try the key from the packet's source (normal case)
+        let key1 = ConnectionKey {
+            cid: hdr.src_cid,
+            port: hdr.src_port,
+        };
+        if self.connections.contains_key(&key1) {
+            return Some(key1);
+        }
+
+        // Try the reverse key (for guest-initiated connections where packets come back from host)
+        let key2 = ConnectionKey {
+            cid: hdr.dst_cid,
+            port: hdr.dst_port,
+        };
+        if self.connections.contains_key(&key2) {
+            return Some(key2);
+        }
+
+        None
+    }
+
     fn poll_cmio(&mut self) -> Result<(), Box<dyn Error>> {
         let cmio_bytes = match self
             .cmio_driver
@@ -89,31 +112,44 @@ impl ConnectionManager {
     fn handle_cmio_packet(&mut self, packet: Packet) -> Result<(), Box<dyn Error>> {
         let (hdr, payload) = packet.into_parts();
         info!(target: "guest", "GUEST: RECEIVED NEW PACKET FROM CMIO\n {:?}", hdr);
-        let key = ConnectionKey::from(&hdr);
 
         match hdr.op {
             VSOCK_OP_REQUEST => self.handle_new_connection_request(hdr)?,
+            VSOCK_OP_RESPONSE => {
+                // Response to our connection request - connection is already established
+                if let Some(key) = self.find_connection_key(&hdr) {
+                    info!(target: "guest", "Received VSOCK_OP_RESPONSE for connection {:?}", key);
+                } else {
+                    info!(target: "guest", "Received VSOCK_OP_RESPONSE for unknown connection. Ignoring.");
+                }
+            }
             VSOCK_OP_RW => {
-                if let Some(connection) = self.connections.get_mut(&key) {
-                    if !payload.is_empty() {
-                        info!(
-                            target: "guest",
-                            "GUEST: FORWARDING {} BYTES FROM CMIO TO VSOCK FOR\n {:?}",
-                            payload.len(),
-                            key
-                        );
-                        if let Err(e) = connection.stream.write_all(&payload) {
-                            error!(target: "guest", "Failed to write to vsock stream for {:?}: {}", key, e);
+                if let Some(key) = self.find_connection_key(&hdr) {
+                    if let Some(connection) = self.connections.get_mut(&key) {
+                        if !payload.is_empty() {
+                            info!(
+                                target: "guest",
+                                "GUEST: FORWARDING {} BYTES FROM CMIO TO VSOCK FOR\n {:?}",
+                                payload.len(),
+                                key
+                            );
+                            if let Err(e) = connection.stream.write_all(&payload) {
+                                error!(target: "guest", "Failed to write to vsock stream for {:?}: {}", key, e);
+                            }
                         }
                     }
                 } else {
-                    info!(target: "guest", "Received OP_RW for unknown connection: {:?}. Ignoring.", key);
+                    info!(target: "guest", "Received OP_RW for unknown connection. Ignoring.");
                 }
             }
             VSOCK_OP_RST | VSOCK_OP_SHUTDOWN => {
-                info!(target: "guest", "Received OP {} for {:?}, closing connection.", hdr.op, key);
-                if let Some(conn) = self.connections.remove(&key) {
-                    let _ = conn.stream.shutdown(std::net::Shutdown::Both);
+                if let Some(key) = self.find_connection_key(&hdr) {
+                    info!(target: "guest", "Received OP {} for {:?}, closing connection.", hdr.op, key);
+                    if let Some(conn) = self.connections.remove(&key) {
+                        let _ = conn.stream.shutdown(std::net::Shutdown::Both);
+                    }
+                } else {
+                    info!(target: "guest", "Received OP {} for unknown connection. Ignoring.", hdr.op);
                 }
             }
             _ => info!(target: "guest", "Received unhandled OP {} from CMIO. Ignoring.", hdr.op),
@@ -287,14 +323,6 @@ impl ConnectionManager {
                     );
                     let packet_to_cmio = Packet::new(rw_hdr, data.to_vec());
                     packets_to_send.push(packet_to_cmio);
-                    info!(
-                        target: "guest",
-                        "GUEST: ECHOING {} BYTES BACK TO VSOCK FOR\n {:?}",
-                        n, key
-                    );
-                    if let Err(e) = connection.stream.write_all(data) {
-                        error!(target: "guest", "Failed to echo to vsock stream for {:?}: {}", key, e);
-                    }
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(e) => {
