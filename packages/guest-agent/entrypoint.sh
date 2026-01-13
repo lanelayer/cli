@@ -4,6 +4,7 @@ ip addr
 socat VSOCK-LISTEN:8080,fork TCP:127.0.0.1:8080 &
 socat VSOCK-LISTEN:8022,fork TCP:127.0.0.1:22 &
 socat TCP-LISTEN:10000,fork VSOCK-CONNECT:1:10000 &
+tail -F /var/log/app*.log >> /dev/console &
 echo "CMIO guest agent setting: $CMIO_GUEST_AGENT" >> /dev/console
 #if [ x$CMIO_GUEST_AGENT != x ]; then
 		echo "Starting guest agent" >> /dev/console

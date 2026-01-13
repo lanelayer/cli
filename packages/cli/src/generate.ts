@@ -103,6 +103,7 @@ export function generateLinuxKitYaml(
     net: host
     binds:
       - /dev:/dev
+      - /var/log:/var/log
     capabilities:
       - all
     devices:
