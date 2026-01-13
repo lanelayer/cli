@@ -281,7 +281,7 @@ pub async fn run_machine_loop_iteration(
                 if state.get_listener(dst_port).is_some() {
                     info!("Found listener for port: {:?}", dst_port);
                     state.add_to_write_queue(construct_packet(
-                        HOST_PORT,
+                        dst_port,
                         src_port, // Send back to the requester's port
                         VSOCK_OP_RESPONSE,
                         &[],
@@ -296,8 +296,8 @@ pub async fn run_machine_loop_iteration(
                     info!("No listener found for port: {:?}", dst_port);
                     // If no listener is found for the requested port, send a reset (RST) packet
                     state.add_to_write_queue(construct_packet(
-                        HOST_PORT,
                         dst_port,
+                        src_port,
                         VSOCK_OP_RST,
                         &[],
                     )?);
