@@ -406,13 +406,13 @@ pub async fn run_machine_loop_iteration(
         if let Some(service_port) = state.get_service_port(port) {
             if let Some(service) = state.get_listener(service_port) {
                 if let Some(data) = service.get_write_data(port) {
-                    let packet = construct_packet(HOST_PORT, port, VSOCK_OP_RW, &data)?;
+                    let packet = construct_packet(service_port, port, VSOCK_OP_RW, &data)?;
                     packets_to_send.push(packet);
                 }
 
                 // Check if service wants to shutdown the connection
                 if service.should_shutdown(port) {
-                    let packet = construct_packet(HOST_PORT, port, VSOCK_OP_SHUTDOWN, &[])?;
+                    let packet = construct_packet(service_port, port, VSOCK_OP_SHUTDOWN, &[])?;
                     packets_to_send.push(packet);
                 }
             }
