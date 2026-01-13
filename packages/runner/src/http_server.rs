@@ -24,6 +24,7 @@ struct HttpConnection {
     buffer: Vec<u8>,
     request_complete: bool,
     response_ready: bool,
+    response_sent: bool,
 }
 
 impl HttpConnection {
@@ -33,6 +34,7 @@ impl HttpConnection {
             buffer: Vec::new(),
             request_complete: false,
             response_ready: false,
+            response_sent: false,
         }
     }
 }
@@ -297,13 +299,23 @@ impl Service for HttpServer {
                 response.len(),
                 port
             );
+            // Mark that we've sent the response
+            if let Some(connection) = self.connections.get_mut(&port) {
+                connection.response_sent = true;
+            }
             return Some(response);
         }
         None
     }
 
     fn should_shutdown(&mut self, port: u32) -> bool {
-        // Keep connections open for now
+        // Shutdown connection after response has been sent
+        if let Some(connection) = self.connections.get(&port) {
+            if connection.response_sent {
+                info!("HTTP server will shutdown connection on port {} after sending response", port);
+                return true;
+            }
+        }
         false
     }
 }
