@@ -93,12 +93,17 @@ export function generateLinuxKitYaml(
       - /root/.ssh:/root/.ssh
 `;
   }
+  let kvUrl =
+    profile === "stage"
+      ? "http://kv-service:3000/kv"
+      : "http://127.0.0.1:10000/kv";
 
   services += `  - name: guest-agent
     image: ${finalGuestAgentImage}
     net: host
     binds:
       - /dev:/dev
+      - /var/log:/var/log
     capabilities:
       - all
     devices:
@@ -106,6 +111,8 @@ export function generateLinuxKitYaml(
   - name: app
     image: ${imageReference}
     net: host
+    env:
+      - KV_URL=${kvUrl}
     capabilities:
       - CAP_CHOWN
       - CAP_DAC_OVERRIDE
