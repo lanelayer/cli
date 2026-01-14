@@ -44,6 +44,13 @@ target "snapshot-builder" {
   depends_on = ["lane-kernels"]
 }
 
+target "kv-service" {
+  inherits = ["docker-metadata-action", "docker-platforms"]
+  context = "./packages/kv-service"
+  dockerfile = "Dockerfile"
+  tags = ["ghcr.io/lanelayer/lane-kv-service:latest"]
+}
+
 target "default" {
-  inherits = ["lane-kernels", "snapshot-builder"]
+  inherits = ["lane-kernels", "snapshot-builder", "kv-service"]
 } 
