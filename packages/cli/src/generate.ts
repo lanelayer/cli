@@ -7,54 +7,6 @@ import { sshDebugKey, sshDebugKeyPub } from "./keys";
 import { createHash } from "crypto";
 import { LANE_SNAPSHOT_BUILDER_IMAGE, GUEST_AGENT_IMAGE } from "./constants";
 
-/**
- * Resolves the path to the kv-service directory.
- * Tries multiple strategies to find it:
- * 1. Relative to __dirname (works when running from source)
- * 2. Relative to process.cwd() (works when running from monorepo root)
- * 3. Via require.resolve (works if installed as npm package)
- */
-function resolveKvServicePath(): string {
-  // Strategy 1: Try relative to __dirname (source build)
-  const relativeToDist = join(__dirname, "../../kv-service");
-  if (existsSync(relativeToDist)) {
-    return relativeToDist;
-  }
-
-  // Strategy 2: Try relative to current working directory (monorepo)
-  const relativeToCwd = join(cwd(), "packages/kv-service");
-  if (existsSync(relativeToCwd)) {
-    return relativeToCwd;
-  }
-
-  // Strategy 3: Try to find it via require.resolve (if installed as package)
-  try {
-    const resolved = require.resolve("@lanelayer/kv-service/package.json");
-    return dirname(resolved);
-  } catch {
-    // Package not found via require.resolve
-  }
-
-  // Strategy 4: Try going up from __dirname to find monorepo structure
-  // __dirname might be in dist/, so go up to packages/cli/dist, then to packages/
-  let currentPath = __dirname;
-  for (let i = 0; i < 5; i++) {
-    const kvServicePath = join(currentPath, "kv-service");
-    if (existsSync(kvServicePath)) {
-      return kvServicePath;
-    }
-    // Also try packages/kv-service
-    const packagesKvServicePath = join(currentPath, "packages", "kv-service");
-    if (existsSync(packagesKvServicePath)) {
-      return packagesKvServicePath;
-    }
-    currentPath = dirname(currentPath);
-  }
-
-  // Fallback: return the original relative path (will fail with a clearer error)
-  return relativeToDist;
-}
-
 function getCacheDirectory(ociTarPath?: string): string {
   const pathHash = getPathHash();
   const baseCacheDir = join(homedir(), ".cache", "lane", pathHash);
@@ -414,10 +366,7 @@ export function generateDockerCompose(
       ...(profile === "dev"
         ? {
           kv_service: {
-            build: {
-              context: resolveKvServicePath(),
-              dockerfile: "Dockerfile",
-            },
+            image: "ghcr.io/lanelayer/lane-kv-service",
             container_name: `${pathHash}-lane-kv-service`,
             hostname: "kv-service",
             networks: ["internal_net"],
