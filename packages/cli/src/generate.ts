@@ -337,7 +337,7 @@ export function generateDockerCompose(
   const composeConfig = {
     services: {
       traefik: {
-        image: "traefik:v2.10",
+        image: "traefik:v3.6.2",
         container_name: `${pathHash}-lane-traefik`,
         hostname: "lane-traefik",
         restart: "no",
