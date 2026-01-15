@@ -379,11 +379,9 @@ export function generateDockerCompose(
               start_period: "10s",
             },
             labels: [
-              "traefik.enable=true",
-              "traefik.http.routers.kv.rule=PathPrefix(`/kv`)",
-              "traefik.http.routers.kv.entrypoints=web",
-              "traefik.http.routers.kv.priority=100",
-              "traefik.http.services.kv.loadbalancer.server.port=3000",
+              // KV service is internal-only (container-to-container communication)
+              // Applications connect directly via kv-service:3000, not through Traefik
+              // Removing Traefik labels eliminates routing conflicts and simplifies configuration
             ],
           },
         }
