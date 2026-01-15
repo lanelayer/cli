@@ -38,8 +38,8 @@ target "guest-agent" {
 
 target "snapshot-builder" {
   inherits = ["docker-metadata-action", "docker-platforms"]
-  context = "./packages/snapshot-builder"
-  dockerfile = "Dockerfile"
+  context = "."
+  dockerfile = "./packages/snapshot-builder/Dockerfile"
   tags = ["ghcr.io/lanelayer/lane-snapshot-builder:latest"]
   depends_on = ["lane-kernels"]
 }

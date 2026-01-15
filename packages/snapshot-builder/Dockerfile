@@ -31,6 +31,22 @@ WORKDIR /build/vhost-device/vhost-device-vsock
 RUN cargo install --path . --root /usr && \
     strip /usr/bin/vhost-device-vsock
 
+FROM rust:1.85.1 AS runner-builder
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    wget \
+    libclang-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY packages/runner /build/packages/runner
+COPY packages/vsock-protocol /build/packages/vsock-protocol
+
+RUN cargo build --manifest-path packages/runner/Cargo.toml --release && \
+    strip /build/packages/runner/target/release/runner
+
 FROM ubuntu:24.04 AS qemu-builder
 RUN apt-get update && apt-get install -y build-essential git curl pkg-config libglib2.0-dev python3 python3-venv ninja-build libcbor-dev libgnutls28-dev
 RUN curl -OL https://download.qemu.org/qemu-10.0.2.tar.xz
@@ -76,5 +92,6 @@ COPY --from=vhost /usr/bin/vhost-device-vsock /usr/bin/vhost-device-vsock
 
 # Copy LinuxKit binary from linuxkit-builder stage
 COPY --from=linuxkit-builder /src/bin/linuxkit /usr/local/bin/linuxkit
+COPY --from=runner-builder /build/packages/runner/target/release/runner /usr/local/bin/runner
 
 CMD ["/bin/bash"] 
