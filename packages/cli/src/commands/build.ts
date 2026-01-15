@@ -780,6 +780,66 @@ function buildLinuxKitImage(
           `✅ Cartesi machine snapshot created successfully for ${profile} profile`
         );
 
+        // Warm up the snapshot to the point of healthcheck
+        console.log(
+          `🔥 Warming up Cartesi machine snapshot for ${profile} profile...`
+        );
+        const warmedSnapshotPath = `/cache/warmed-vc-cm-snapshot${debugSuffix}`;
+        const warmupCommand = [
+          "docker",
+          "run",
+          "--rm",
+          "--user",
+          `${uid}:${gid}`,
+          "-v",
+          `${currentDir}:/work`,
+          "-v",
+          `${cacheDir}:/cache`,
+          "-w",
+          "/cache",
+          LANE_SNAPSHOT_BUILDER_IMAGE,
+          "/usr/local/bin/runner",
+          "--from",
+          `/cache/vc-cm-snapshot${debugSuffix}`,
+          "--to",
+          warmedSnapshotPath,
+        ];
+
+        console.log(`Executing: ${warmupCommand.join(" ")}`);
+        const warmupResult = spawnSync(
+          warmupCommand[0],
+          warmupCommand.slice(1),
+          { stdio: "inherit", cwd: currentDir }
+        );
+
+        if (warmupResult.status !== 0) {
+          console.error(
+            "Warmup command failed with status:",
+            warmupResult.status
+          );
+          throw new Error(
+            `Warmup command failed with status ${warmupResult.status}`
+          );
+        }
+
+        // Replace the original snapshot with the warmed one
+        const originalSnapshotPath = cacheDir
+          ? join(cacheDir, `vc-cm-snapshot${debugSuffix}`)
+          : join(currentDir, `vc-cm-snapshot${debugSuffix}`);
+        const warmedSnapshotLocalPath = cacheDir
+          ? join(cacheDir, `warmed-vc-cm-snapshot${debugSuffix}`)
+          : join(currentDir, `warmed-vc-cm-snapshot${debugSuffix}`);
+        if (existsSync(warmedSnapshotLocalPath)) {
+          console.log(`🔄 Replacing original snapshot with warmed version...`);
+          execSync(`rm -rf "${originalSnapshotPath}"`, { stdio: "ignore" });
+          execSync(`mv "${warmedSnapshotLocalPath}" "${originalSnapshotPath}"`, {
+            stdio: "inherit",
+          });
+          console.log(
+            `✅ Warmed snapshot saved successfully for ${profile} profile`
+          );
+        }
+
         // Print the hash from vc-cm-snapshot/hash
         try {
           const hashPath = join(cmSnapshotPath, "hash");
