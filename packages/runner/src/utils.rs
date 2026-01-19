@@ -203,6 +203,10 @@ impl RunnerState {
     pub fn pop_from_read_queue(&mut self) -> Option<Packet> {
         self.cmio_read_queue.pop()
     }
+
+    pub fn is_write_queue_empty(&self) -> bool {
+        self.cmio_write_queue.is_empty()
+    }
 }
 
 pub fn construct_packet(
