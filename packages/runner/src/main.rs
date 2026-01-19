@@ -192,6 +192,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
             ExecutionState::HealthCheckSucceeded => {
                 info!(
+                    "Health check passed — cleaning up health check client before snapshot"
+                );
+
+                loop {
+                    if let Err(e) = run_machine_loop_iteration(machine_arc.clone(), state.clone()).await {
+                        eprintln!("Machine loop iteration failed during cleanup: {}", e);
+                        break;
+                    }
+
+                    let state_guard = state.lock().await;
+                    if state_guard.is_write_queue_empty() {
+                        info!("Write queue is empty, ready to take snapshot");
+                        break;
+                    }
+                    drop(state_guard);
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                }
+
+                info!(
                     "Health check passed — saving warmed machine to {}",
                     warmed_snapshot_path
                 );
