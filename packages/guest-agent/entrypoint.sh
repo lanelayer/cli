@@ -7,8 +7,13 @@ socat TCP-LISTEN:10000,fork VSOCK-CONNECT:1:10000 &
 tail -F /var/log/app.log /var/log/app.out.log >> /dev/console &
 echo "CMIO guest agent setting: $CMIO_GUEST_AGENT" >> /dev/console
 #if [ x$CMIO_GUEST_AGENT != x ]; then
+	if [ "x$DEBUG_GUEST_AGENT" != "x" ]; then
+		echo "Starting guest agent (debug enabled)" >> /dev/console
+        	RUST_LOG=${RUST_LOG:-trace} /bin/guest-agent >> /dev/console 2>&1
+	else
 		echo "Starting guest agent" >> /dev/console
-        RUST_LOG=trace /bin/guest-agent >> /dev/console 2>&1
+        	/bin/guest-agent >> /dev/console 2>&1
+	fi
 #fi
 echo "Guest agent failed to start" >> /dev/console
 while true; do

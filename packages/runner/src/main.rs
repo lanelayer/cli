@@ -1,6 +1,6 @@
 use cartesi_machine::{config::runtime::RuntimeConfig, machine::Machine};
-use env_logger::Builder;
-use log::{info, LevelFilter};
+use env_logger::{Builder, Env};
+use log::{info};
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -253,7 +253,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 
 fn setup_logger() {
-    let mut builder = Builder::new();
+    let env = Env::default().filter_or("RUST_LOG", "off");
+    let mut builder = Builder::from_env(env);
     builder
         .format(|buf, record| {
             writeln!(
@@ -264,6 +265,5 @@ fn setup_logger() {
                 record.args()
             )
         })
-        .filter(None, LevelFilter::Info)
         .init();
 }
