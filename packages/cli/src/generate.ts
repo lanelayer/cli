@@ -5,7 +5,11 @@ import { homedir } from "os";
 import { getPathHash, getComposeCacheDirectory } from "./cli";
 import { sshDebugKey, sshDebugKeyPub } from "./keys";
 import { createHash } from "crypto";
-import { LANE_SNAPSHOT_BUILDER_IMAGE, GUEST_AGENT_IMAGE } from "./constants";
+import {
+  LANE_SNAPSHOT_BUILDER_IMAGE,
+  GUEST_AGENT_IMAGE,
+  CORE_LANE_IMAGE,
+} from "./constants";
 
 function getCacheDirectory(ociTarPath?: string): string {
   const pathHash = getPathHash();
@@ -172,6 +176,17 @@ export function generateDockerCompose(
   guestAgentImage?: string,
   hot = false
 ) {
+  // For prod/prod-debug, use the separate function with anvil + core-lane
+  if (profile === "prod" || profile === "prod-debug") {
+    return generateProdDockerCompose(
+      imageTag,
+      profile,
+      ociTarPath,
+      cacheDir,
+      guestAgentImage
+    );
+  }
+
   // Use the image tag directly since the OCI image is loaded into Docker
   const imageReference = imageTag;
 
@@ -179,7 +194,7 @@ export function generateDockerCompose(
   // Use the provided cache directory or fall back to calculating it
   const finalCacheDir = cacheDir || getCacheDirectory(ociTarPath);
 
-  // For stage and prod profiles, use snapshot-builder with different commands
+  // For stage profiles, use snapshot-builder with different commands
   let isolatedServiceConfig;
 
   if (profile === "stage" || profile === "stage-release") {
@@ -230,53 +245,6 @@ export function generateDockerCompose(
       },
       devices: ["/dev/vsock"],
       privileged: true,
-      labels: [
-        "traefik.enable=true",
-        "traefik.http.routers.isolated.rule=PathPrefix(`/`)",
-        "traefik.http.routers.isolated.entrypoints=web",
-        "traefik.http.services.isolated.loadbalancer.server.port=8080",
-        "traefik.http.services.isolated.loadbalancer.server.scheme=http",
-        `lane.profile=${profile}`,
-        `lane.image.tag=${imageTag}`,
-        `lane.image.path=${ociTarPath || "none"}`,
-        `lane.build.timestamp=${new Date().toISOString()}`,
-        `lane.path.hash=${pathHash}`,
-      ],
-    };
-  } else if (profile === "prod" || profile === "prod-debug") {
-    // Determine the correct squashfs file based on debug tools inclusion
-    const includeDebugTools = profile === "prod-debug";
-    const debugSuffix = includeDebugTools ? "-debug" : "-release";
-
-    isolatedServiceConfig = {
-      image: LANE_SNAPSHOT_BUILDER_IMAGE,
-      container_name: `${pathHash}-lane-isolated-service`,
-      hostname: "lane-isolated-service",
-      networks: ["internal_net"],
-      volumes: [
-        `${finalCacheDir}:/work`,
-        `${pathHash}_lane_shared_data:/media/lane`,
-      ],
-      command: [
-        "cartesi-machine",
-        `--flash-drive=label:root,filename:/work/vc${debugSuffix}.squashfs`,
-        "--ram-length=1024Mi",
-        "--append-bootargs=loglevel=8 init=/sbin/init systemd.unified_cgroup_hierarchy=0 ro",
-        "--skip-root-hash-check",
-        "--virtio-net=user",
-        "-p=0.0.0.0:8080:10.0.2.15:8080/tcp",
-        "-p=0.0.0.0:8022:10.0.2.15:22/tcp",
-      ],
-      tty: true,
-      stdin_open: true,
-      restart: "no",
-      healthcheck: {
-        test: ["CMD", "curl", "-f", "http://localhost:8080/health"],
-        interval: "30s",
-        timeout: "10s",
-        retries: 3,
-        start_period: "40s",
-      },
       labels: [
         "traefik.enable=true",
         "traefik.http.routers.isolated.rule=PathPrefix(`/`)",
@@ -408,6 +376,114 @@ export function generateDockerCompose(
     volumes: {
       [`${pathHash}_lane_shared_data`]: {
         driver: "local",
+      },
+    },
+  };
+
+  // Write the Docker Compose file to the base directory (where other functions expect it)
+  // but the volume mounts point to the subdirectory where build artifacts are stored
+  const composePath = join(
+    getComposeCacheDirectory(),
+    "docker-compose.dev.json"
+  );
+  writeFileSync(composePath, JSON.stringify(composeConfig, null, 2));
+  return composePath;
+}
+
+export function generateProdDockerCompose(
+  imageTag: string,
+  profile: string,
+  ociTarPath?: string,
+  cacheDir?: string,
+  guestAgentImage?: string
+) {
+  const pathHash = getPathHash();
+  // Use the provided cache directory or fall back to calculating it
+  const finalCacheDir = cacheDir || getCacheDirectory(ociTarPath);
+
+  // Determine the correct squashfs file based on debug tools inclusion
+  const includeDebugTools = profile === "prod-debug";
+  const debugSuffix = includeDebugTools ? "-debug" : "-release";
+
+  const isolatedServiceConfig = {
+    image: CORE_LANE_IMAGE,
+    container_name: `${pathHash}-lane-isolated-service`,
+    hostname: "lane-isolated-service",
+    networks: ["internal_net"],
+    volumes: [
+      `${finalCacheDir}/vc${debugSuffix}.squashfs:/vc-cm-snapshot.squashfs:ro`,
+    ],
+    environment: {
+      ONLY_START: "derive-node",
+      HTTP_PORT: "8545",
+      HTTP_HOST: "0.0.0.0",
+      CORE_RPC_URL: "http://anvil:8545",
+      CHAIN_ID: process.env.CHAIN_ID || "1281453634",
+      DERIVED_DA_ADDRESS:
+        process.env.DERIVED_DA_ADDRESS ||
+        "0x0000000000000000000000000000000000000000",
+      START_BLOCK: process.env.START_BLOCK || "0",
+      CORE_LANE_DA_PRIVATE_KEY:
+        process.env.CORE_LANE_DA_PRIVATE_KEY ||
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      LANELAYER_HTTP_RUNNER_SNAPSHOT: "/data/vc-cm-snapshot",
+    },
+    depends_on: {
+      anvil: {
+        condition: "service_healthy",
+      },
+    },
+    ports: ["8545:8545"],
+    restart: "no",
+    healthcheck: {
+      test: ["CMD", "curl", "-f", "http://localhost:8545/health"],
+      interval: "30s",
+      timeout: "10s",
+      retries: 3,
+      start_period: "40s",
+    },
+    labels: [
+      `lane.profile=${profile}`,
+      `lane.image.tag=${imageTag}`,
+      `lane.image.path=${ociTarPath || "none"}`,
+      `lane.build.timestamp=${new Date().toISOString()}`,
+      `lane.path.hash=${pathHash}`,
+    ],
+  };
+
+  const composeConfig = {
+    services: {
+      isolated_service: isolatedServiceConfig,
+      anvil: {
+        image: "ghcr.io/foundry-rs/foundry:latest",
+        container_name: `${pathHash}-lane-anvil`,
+        hostname: "anvil",
+        networks: ["internal_net"],
+        command: ["anvil"],
+        environment: {
+          ANVIL_IP_ADDR: "0.0.0.0",
+        },
+        restart: "no",
+        tty: true,
+        stdin_open: true,
+        healthcheck: {
+          test: [
+            "CMD",
+            "cast",
+            "block-number",
+            "--rpc-url",
+            "http://localhost:8545",
+          ],
+          interval: "10s",
+          timeout: "5s",
+          retries: 3,
+          start_period: "5s",
+        },
+      },
+    },
+    networks: {
+      internal_net: {
+        driver: "bridge",
       },
     },
   };
