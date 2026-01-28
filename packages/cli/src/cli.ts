@@ -22,6 +22,7 @@ import { handleDownCommand } from "./commands/down";
 import { handleSubmitCommand } from "./commands/submit";
 import { showCommandHelp } from "./commands/help";
 import { checkDockerAvailable } from "./checks";
+import { trackCommand, disableTelemetry, enableTelemetry } from "./telemetry";
 
 export function getPathHash(): string {
   const currentPath = cwd();
@@ -133,83 +134,110 @@ function main() {
   }
 
   const command = args[0];
+  const startTime = Date.now();
+  let success = true;
 
-  switch (command) {
-    case "intro":
-      handleIntroCommand(args);
-      break;
+  try {
+    switch (command) {
+      case "intro":
+        handleIntroCommand(args);
+        break;
 
-    case "build":
-      handleBuildCommand(args);
-      break;
+      case "build":
+        handleBuildCommand(args);
+        break;
 
-    case "up":
-      handleUpCommand(args);
-      break;
+      case "up":
+        handleUpCommand(args);
+        break;
 
-    case "push":
-      handlePushCommand(args);
-      break;
+      case "push":
+        handlePushCommand(args);
+        break;
 
-    case "down":
-      handleDownCommand(args);
-      break;
+      case "down":
+        handleDownCommand(args);
+        break;
 
-    case "logs":
-      handleLogsCommand(args);
-      break;
+      case "logs":
+        handleLogsCommand(args);
+        break;
 
-    case "exec":
-      handleExecCommand(args);
-      break;
+      case "exec":
+        handleExecCommand(args);
+        break;
 
-    case "shell":
-      handleShellCommand(args);
-      break;
+      case "shell":
+        handleShellCommand(args);
+        break;
 
-    case "cat":
-      handleCatCommand(args);
-      break;
+      case "cat":
+        handleCatCommand(args);
+        break;
 
-    case "export":
-      handleExportCommand(args);
-      break;
+      case "export":
+        handleExportCommand(args);
+        break;
 
-    case "prune":
-      let pruneLocal = false;
+      case "prune":
+        let pruneLocal = false;
 
-      // Parse prune arguments
-      for (let i = 1; i < args.length; i++) {
-        const arg = args[i];
-        if (arg === "--local") {
-          pruneLocal = true;
+        // Parse prune arguments
+        for (let i = 1; i < args.length; i++) {
+          const arg = args[i];
+          if (arg === "--local") {
+            pruneLocal = true;
+          }
         }
-      }
 
-      if (pruneLocal) {
-        pruneLaneLocal();
-      } else {
-        pruneLane();
-      }
-      break;
+        if (pruneLocal) {
+          pruneLaneLocal();
+        } else {
+          pruneLane();
+        }
+        break;
 
-    case "create":
-      handleCreateCommand(args);
-      break;
+      case "create":
+        handleCreateCommand(args);
+        break;
 
-    case "perf":
-      handlePerfCommand(args);
-      break;
+      case "perf":
+        handlePerfCommand(args);
+        break;
 
-    case "submit":
-      handleSubmitCommand(args);
-      break;
+      case "submit":
+        handleSubmitCommand(args);
+        break;
 
-    default:
-      console.error(`Unknown command: ${command}`);
-      showHelp();
-      process.exit(1);
+      case "telemetry":
+        if (args[1] === "off") {
+          disableTelemetry();
+        } else if (args[1] === "on") {
+          enableTelemetry();
+        } else {
+          console.log("Usage: lane telemetry <on|off>");
+        }
+        return;
+
+      default:
+        console.error(`Unknown command: ${command}`);
+        showHelp();
+        process.exit(1);
+    }
+  } catch (err) {
+    success = false;
+    trackCommand(command, {
+      success: false,
+      duration_ms: Date.now() - startTime,
+      error_message: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
   }
+
+  trackCommand(command, {
+    success: true,
+    duration_ms: Date.now() - startTime,
+  });
 }
 
 main();
