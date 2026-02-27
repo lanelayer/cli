@@ -525,9 +525,10 @@ export function handlePushCommand(args: string[]): void {
         const metadata = JSON.parse(metadataContent);
 
         // Extract digest from metadata
-        if (metadata.digest) {
-          digest = metadata.digest.replace("sha256:", "");
-          console.log(`🔐 Container digest: ${metadata.digest}`);
+        const rawDigest = metadata["containerimage.digest"] || metadata.digest;
+        if (rawDigest) {
+          digest = rawDigest.replace("sha256:", "");
+          console.log(`🔐 Container digest: ${rawDigest}`);
         } else {
           console.log(`⚠️  No digest found in metadata file`);
         }
