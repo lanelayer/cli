@@ -60,6 +60,9 @@ export function handleExportCommand(args: string[]): void {
       console.log("  lane export stage-release ./stage-artifacts");
       console.log("  lane export prod-debug ./debug-deployment");
       console.log(
+        "  lane export prod ./my-prod-deployment --image my-registry/my-image:v1"
+      );
+      console.log(
         "  lane export prod ./my-prod-deployment --guest-agent-image my-registry/guest-agent:v2"
       );
       process.exit(1);
@@ -68,6 +71,7 @@ export function handleExportCommand(args: string[]): void {
     const profile = args[1];
     const exportPath = resolve(args[2]);
     let guestAgentImage: string | undefined;
+    let imageTag: string | undefined;
 
     // Parse additional options
     for (let i = 3; i < args.length; i++) {
@@ -80,6 +84,14 @@ export function handleExportCommand(args: string[]): void {
           i++; // Skip next argument
         } else {
           console.error("Error: --guest-agent-image requires a value");
+          process.exit(1);
+        }
+      } else if (arg === "--image") {
+        if (nextArg) {
+          imageTag = nextArg;
+          i++; // Skip next argument
+        } else {
+          console.error("Error: --image requires a value");
           process.exit(1);
         }
       }
@@ -97,6 +109,9 @@ export function handleExportCommand(args: string[]): void {
     }
 
     console.log(`📦 Exporting ${profile} profile to: ${exportPath}`);
+    if (imageTag) {
+      console.log(`🖼️  Using image: ${imageTag}`);
+    }
     if (guestAgentImage && (profile === "prod" || profile === "prod-debug")) {
       console.log(`🤖 Using guest agent image: ${guestAgentImage}`);
     }
@@ -108,14 +123,20 @@ export function handleExportCommand(args: string[]): void {
     }
 
     // Use the same cache directory logic as build (deterministic from image tag + profile + guestAgentImage)
-    const imageTag = `lane-build-${getPathHash()}:latest`;
-    const cacheDir = getCacheDirectory(imageTag, profile, guestAgentImage);
+    const resolvedImageTag =
+      imageTag ?? `lane-build-${getPathHash()}:latest`;
+    const cacheDir = getCacheDirectory(
+      resolvedImageTag,
+      profile,
+      guestAgentImage
+    );
 
     if (!existsSync(cacheDir)) {
-      const buildCmd =
-        guestAgentImage && (profile === "prod" || profile === "prod-debug")
-          ? `lane build ${profile} --guest-agent-image ${guestAgentImage}`
-          : `lane build ${profile}`;
+      let buildCmd = `lane build ${profile}`;
+      if (imageTag) buildCmd += ` --image ${imageTag}`;
+      if (guestAgentImage && (profile === "prod" || profile === "prod-debug")) {
+        buildCmd += ` --guest-agent-image ${guestAgentImage}`;
+      }
       console.error(`❌ Error: Cache directory not found: ${cacheDir}`);
       console.error(`Run "${buildCmd}" first to create the required files.`);
       process.exit(1);

@@ -224,15 +224,14 @@ Export build artifacts for a specific profile to a directory.
   🐛 prod-debug   - Verifiable RISC-V artifacts (with debug)
 
 ⚙️  Options:
-  🤖 --guest-agent-image <image>         Custom guest agent image (prod/prod-debug only)
-  📁 --cache-dir <path>                  Custom cache directory
-  🔄 --force-rebuild                     Force rebuild all artifacts
+  🖼️  --image <tag>                     Image tag used for build (must match lane build --image)
+  🤖 --guest-agent-image <image>        Custom guest agent image (prod/prod-debug only)
 
 💡 Examples:
   lane export prod ./deployment
+  lane export prod ./deployment --image my-registry/my-image:v1
   lane export stage ./test-artifacts
   lane export prod ./deployment --guest-agent-image my-registry/guest-agent:v2
-  lane export prod ./deployment --force-rebuild
 
 🔧 Notes:
   • Exports all artifacts needed for deployment
