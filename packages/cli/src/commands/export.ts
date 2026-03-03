@@ -1,4 +1,3 @@
-import { execSync } from "child_process";
 import { existsSync, mkdirSync, copyFileSync } from "fs";
 import { join, resolve } from "path";
 import { homedir } from "os";
@@ -108,63 +107,18 @@ export function handleExportCommand(args: string[]): void {
       console.log(`✅ Created export directory: ${exportPath}`);
     }
 
-    // Get cache directory using the same logic as build process
-    const pathHash = getPathHash();
-    const baseCacheDir = join(homedir(), ".cache", "lane", pathHash);
+    // Use the same cache directory logic as build (deterministic from image tag + profile + guestAgentImage)
+    const imageTag = `lane-build-${getPathHash()}:latest`;
+    const cacheDir = getCacheDirectory(imageTag, profile, guestAgentImage);
 
-    // For export, we need to find the actual cache directory
-    // Since we don't have the image tag, we'll look for the most recent subdirectory
-    // that matches our guest-agent image hash if specified
-    let cacheDir = baseCacheDir;
-
-    if (existsSync(baseCacheDir)) {
-      try {
-        if (
-          guestAgentImage &&
-          (profile === "prod" || profile === "prod-debug")
-        ) {
-          // For prod/prod-debug with guest-agent image, we need to find the specific cache directory
-          // Create a hash that includes the guest-agent image
-          const hashInput = `lane-build-${pathHash}:latest:${guestAgentImage}`;
-          const imageHash = createHash("sha256")
-            .update(hashInput)
-            .digest("hex")
-            .substring(0, 8);
-          const specificCacheDir = join(baseCacheDir, imageHash);
-
-          if (existsSync(specificCacheDir)) {
-            cacheDir = specificCacheDir;
-            console.log(
-              `✅ Found cache directory for guest agent image: ${cacheDir}`
-            );
-          } else {
-            console.error(
-              `❌ Error: Cache directory not found for guest agent image: ${guestAgentImage}`
-            );
-            console.error(
-              'Run "lane build ' +
-                profile +
-                " --guest-agent-image " +
-                guestAgentImage +
-                '" first to create the required files.'
-            );
-            process.exit(1);
-          }
-        } else {
-          // Find the most recent subdirectory (which should contain our build artifacts)
-          const subdirs = execSync(`ls -1t "${baseCacheDir}" | head -1`, {
-            encoding: "utf8",
-          }).trim();
-          if (subdirs) {
-            cacheDir = join(baseCacheDir, subdirs);
-          }
-        }
-      } catch (err) {
-        // If we can't find a subdirectory, use the base directory
-        console.log(
-          "⚠️  Could not determine exact cache subdirectory, using base directory"
-        );
-      }
+    if (!existsSync(cacheDir)) {
+      const buildCmd =
+        guestAgentImage && (profile === "prod" || profile === "prod-debug")
+          ? `lane build ${profile} --guest-agent-image ${guestAgentImage}`
+          : `lane build ${profile}`;
+      console.error(`❌ Error: Cache directory not found: ${cacheDir}`);
+      console.error(`Run "${buildCmd}" first to create the required files.`);
+      process.exit(1);
     }
 
     // Determine debug suffix for file names
