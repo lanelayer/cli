@@ -10,6 +10,10 @@ import {
   checkRiscv64Support,
   requireOciExportSupport,
 } from "../checks";
+import {
+  DEFAULT_LANE_NOTIFY_ENDPOINT,
+  DEFAULT_REGISTRY_BASE,
+} from "../constants";
 import { TarContextBuilder } from "../tar-context";
 import { showCommandHelp } from "./help";
 
@@ -150,9 +154,16 @@ export function handlePushCommand(args: string[]): void {
     console.error("Error: lane push requires a registry path");
     console.log("Usage: lane push <registry-path> [options]");
     console.log("Examples:");
+    console.log("  lane push myapp:latest");
     console.log("  lane push my-registry.com/myapp:latest");
     console.log("  lane push ghcr.io/myuser/myapp:v1.0.0");
     process.exit(1);
+  }
+
+  // Use default LaneLayer registry when path has no slash (e.g. myapp:latest)
+  if (!registryPath.includes("/")) {
+    registryPath = `${DEFAULT_REGISTRY_BASE}/${registryPath}`;
+    console.log(`📤 Using default registry: ${registryPath}`);
   }
 
   // Resolve custom remote registry mappings
@@ -542,8 +553,10 @@ export function handlePushCommand(args: string[]): void {
     console.log(`\n✅ Build and push completed successfully!`);
     console.log(`📤 Successfully pushed to: ${resolvedRegistryPath}`);
 
-    // Send notification if configured
-    if (resolved.config?.notify_url) {
+    const notifyUrl =
+      resolved.config?.notify_url ??
+      DEFAULT_LANE_NOTIFY_ENDPOINT;
+    if (notifyUrl) {
       try {
         const notificationData = {
           type: "push",
@@ -556,13 +569,11 @@ export function handlePushCommand(args: string[]): void {
           digest: digest ? `sha256:${digest}` : undefined,
         };
 
-        console.log(
-          `📢 Sending notification to: ${resolved.config.notify_url}`
-        );
+        console.log(`📢 Sending notification to: ${notifyUrl}`);
         const response = execSync(
           `curl -X POST -H "Content-Type: application/json" -d '${JSON.stringify(
             notificationData
-          )}' "${resolved.config.notify_url}"`,
+          )}' "${notifyUrl}"`,
           {
             encoding: "utf8",
             stdio: "pipe",

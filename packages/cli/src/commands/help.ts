@@ -162,16 +162,17 @@ Build a production (RISC-V) container and push it to a registry.
   🔗 --git                                Only push to git remote, don't build
 
 💡 Examples:
+  lane push myapp:latest                    # Uses default registry (ghcr.io/lanelayer)
   lane push my-registry.com/myapp:latest
   lane push ghcr.io/myuser/myapp:v1.0.0
-  lane push docker.io/myuser/myapp:latest
   lane push my-registry.com/myapp:latest --depot
   lane push my-registry.com/myapp:latest --force-rebuild
 
 🔧 Notes:
+  • Short path (e.g. myapp:latest) uses default registry ghcr.io/lanelayer
+  • Set LANE_NOTIFY_URL to the lane handshake endpoint to get a live RPC after push
   • Always builds for RISC-V 64-bit architecture
-  • Uses deterministic builds for reproducibility
-  • Supports custom registry mappings
+  • Supports custom registry mappings via ~/.lane/remotes/
   • --source and --git are mutually exclusive
 `);
 }
