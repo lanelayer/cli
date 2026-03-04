@@ -7,7 +7,7 @@ socat TCP-LISTEN:10000,fork VSOCK-CONNECT:1:10000 &
 tail -F /var/log/app.log /var/log/app.out.log >> /dev/console &
 echo "CMIO guest agent setting: $CMIO_GUEST_AGENT" >> /dev/console
 echo "Waiting for healthcheck on TCP 8080..." >> /dev/console
-while ! curl -sSf --connect-timeout 2 -o /dev/null http://127.0.0.1:8080/health 2>/dev/null; do
+while ! curl -sSf -o /dev/null http://127.0.0.1:8080/health > /dev/console 2>&1; do
 	echo "Healthcheck failed, retrying..." >> /dev/console
 	sleep 1
 done
