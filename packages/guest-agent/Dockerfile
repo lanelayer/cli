@@ -53,7 +53,8 @@ RUN apk add --no-cache --initdb -p /out \
     busybox \
     libgcc \
     socat \
-    musl
+    musl \
+    curl
 
 # Remove apk residuals
 RUN rm -rf /out/etc/apk /out/lib/apk /out/var/cache
