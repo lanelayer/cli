@@ -6,6 +6,12 @@ socat VSOCK-LISTEN:8022,fork TCP:127.0.0.1:22 &
 socat TCP-LISTEN:10000,fork VSOCK-CONNECT:1:10000 &
 tail -F /var/log/app.log /var/log/app.out.log >> /dev/console &
 echo "CMIO guest agent setting: $CMIO_GUEST_AGENT" >> /dev/console
+echo "Waiting for healthcheck on TCP 8080..." >> /dev/console
+while ! curl -sSf --connect-timeout 2 -o /dev/null http://127.0.0.1:8080/health 2>/dev/null; do
+	echo "Healthcheck failed, retrying..." >> /dev/console
+	sleep 1
+done
+echo "Healthcheck passed, starting guest agent" >> /dev/console
 #if [ x$CMIO_GUEST_AGENT != x ]; then
 	if [ "x$DEBUG_GUEST_AGENT" != "x" ]; then
 		echo "Starting guest agent (debug enabled)" >> /dev/console
