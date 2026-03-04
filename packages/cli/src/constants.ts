@@ -11,4 +11,4 @@ export const DEFAULT_REGISTRY_BASE = "cli-backend-registry.fly.dev";
  * Override with env LANE_NOTIFY_URL.
  */
 export const DEFAULT_LANE_NOTIFY_ENDPOINT =
-  "https://cli-backend-notification-server.fly.dev/";
+  "https://cli-backend-notification-server.fly.dev/notify";
