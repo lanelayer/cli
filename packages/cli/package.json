@@ -1,6 +1,6 @@
 {
   "name": "@lanelayer/cli",
-  "version": "0.4.15",
+  "version": "0.4.17",
   "description": "LaneLayer CLI - Build and run HTTP server containers for payments and intent execution",
   "bin": {
     "lane": "dist/cli.js"

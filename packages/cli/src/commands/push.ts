@@ -149,19 +149,13 @@ export function handlePushCommand(args: string[]): void {
     }
   }
 
-  // Validate required arguments
+  // When no registry path given, push to ttl.sh with 1h TTL (ephemeral)
   if (!registryPath) {
-    console.error("Error: lane push requires a registry path");
-    console.log("Usage: lane push <registry-path> [options]");
-    console.log("Examples:");
-    console.log("  lane push myapp:latest");
-    console.log("  lane push my-registry.com/myapp:latest");
-    console.log("  lane push ghcr.io/myuser/myapp:v1.0.0");
-    process.exit(1);
-  }
-
-  // Use default LaneLayer registry when path has no slash (e.g. myapp:latest)
-  if (!registryPath.includes("/")) {
+    const pathHash = getPathHash();
+    registryPath = `ttl.sh/lane-${pathHash}:1h`;
+    console.log(`📤 No registry path given, using ephemeral: ${registryPath}`);
+  } else if (!registryPath.includes("/")) {
+    // Use default LaneLayer registry when path has no slash (e.g. myapp:latest)
     registryPath = `${DEFAULT_REGISTRY_BASE}/${registryPath}`;
     console.log(`📤 Using default registry: ${registryPath}`);
   }
