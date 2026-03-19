@@ -39,10 +39,57 @@ export function showCommandHelp(command: string): void {
     case "submit":
       showSubmitHelp();
       break;
+    case "signup":
+      showSignupHelp();
+      break;
+    case "verify":
+      showVerifyHelp();
+      break;
     default:
       console.log(`❓ Unknown command: ${command}`);
       console.log('Use "lane --help" to see all available commands');
   }
+}
+
+function showSignupHelp(): void {
+  console.log(`
+✉️  lane signup - Register email for a session
+============================================
+
+Registers your email address for a LaneLayer session and triggers a 6-digit
+verification code email.
+
+📋 Usage:
+  lane signup <email> --session <session_id> [--api-url <url>]
+
+⚙️  Options:
+  --session <id>        Session ID for telemetry and registration
+  --api-url <url>       Analytics API base URL (default: $LANE_ANALYTICS_URL or https://lanelayer-analytics.fly.dev)
+
+💡 Examples:
+  lane signup dev@example.com --session abc123
+  lane signup dev@example.com --session abc123 --api-url http://localhost:8080
+`);
+}
+
+function showVerifyHelp(): void {
+  console.log(`
+🔐 lane verify - Verify email code for a session
+===============================================
+
+Verifies the 6-digit code emailed to you after running \`lane signup\`.
+
+📋 Usage:
+  lane verify <6_digit_code> --session <session_id> [--api-url <url>]
+
+⚙️  Options:
+  --session <id>        Session ID for telemetry and verification
+  --api-url <url>       Analytics API base URL (default: $LANE_ANALYTICS_URL or https://lanelayer-analytics.fly.dev)
+
+💡 Examples:
+  lane verify 123456 --session abc123
+  lane verify 123456 --session abc123 --api-url http://localhost:8080
+`);
 }
 
 function showBuildHelp(): void {
