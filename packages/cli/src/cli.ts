@@ -20,6 +20,8 @@ import { handleIntroCommand } from "./commands/intro";
 import { handlePushCommand } from "./commands/push";
 import { handleDownCommand } from "./commands/down";
 import { handleSubmitCommand } from "./commands/submit";
+import { handleSignupCommand } from "./commands/signup";
+import { handleVerifyCommand } from "./commands/verify";
 import { showCommandHelp } from "./commands/help";
 import { checkDockerAvailable } from "./checks";
 
@@ -82,6 +84,8 @@ Build and run HTTP server containers for payments and intent execution.
 
 📋 Commands:
   🆕 lane intro                           Show introduction and quick start guide
+  ✉️  lane signup <email> --session <id>   Register email for a lane session
+  🔐 lane verify <code> --session <id>     Verify email with a 6-digit code
   🏗️  lane create <dir> --template <lang>  Create new HTTP server project
   🔨 lane build <profile> [options]       Build container images
   🚀 lane up <profile> [options]          Build and run container
@@ -137,6 +141,14 @@ function main() {
   switch (command) {
     case "intro":
       handleIntroCommand(args);
+      break;
+
+    case "signup":
+      void handleSignupCommand(args);
+      break;
+
+    case "verify":
+      void handleVerifyCommand(args);
       break;
 
     case "build":
