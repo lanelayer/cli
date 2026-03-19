@@ -1,4 +1,3 @@
-import https from "https";
 import { URL } from "url";
 import { showCommandHelp } from "./help";
 
@@ -32,35 +31,18 @@ function parseArgs(args: string[]): SignupArgs {
   return result;
 }
 
-function postJson(url: URL, body: unknown): Promise<{ status: number; text: string }> {
-  const payload = JSON.stringify(body);
-  return new Promise((resolve, reject) => {
-    const req = https.request(
-      {
-        method: "POST",
-        hostname: url.hostname,
-        port: url.port ? Number(url.port) : 443,
-        path: url.pathname + url.search,
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(payload).toString(),
-        },
-      },
-      (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (d) => chunks.push(Buffer.isBuffer(d) ? d : Buffer.from(d)));
-        res.on("end", () => {
-          resolve({
-            status: res.statusCode || 0,
-            text: Buffer.concat(chunks).toString("utf8"),
-          });
-        });
-      }
-    );
-    req.on("error", reject);
-    req.write(payload);
-    req.end();
+async function postJson(url: URL, body: unknown): Promise<{ status: number; text: string }> {
+  const resp = await fetch(url.toString(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
   });
+  return {
+    status: resp.status,
+    text: await resp.text(),
+  };
 }
 
 export async function handleSignupCommand(args: string[]): Promise<void> {
