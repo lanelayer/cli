@@ -83,7 +83,7 @@ impl HttpServer {
         // Check if there's a Content-Length header
         let content_length = Self::parse_content_length(&header_lines);
         let header_size = header_end + 4;
-        
+
         if let Some(body_len) = content_length {
             // Need to read the body
             let total_size = header_size + body_len;
@@ -304,7 +304,11 @@ impl Service for HttpServer {
                 connection.buffer.drain(..request_len);
                 if let Some(response_data) = response {
                     connection.pending_responses.push_back(response_data);
-                    info!("HTTP server queued response for port {} ({} pending)", port, connection.pending_responses.len());
+                    info!(
+                        "HTTP server queued response for port {} ({} pending)",
+                        port,
+                        connection.pending_responses.len()
+                    );
                 }
             }
         }

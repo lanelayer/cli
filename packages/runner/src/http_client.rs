@@ -2,21 +2,27 @@ use crate::utils::{Client, RunnerState};
 use log::{error, info};
 use std::collections::HashMap;
 
-/// Pending POST request metadata
-struct PendingPostRequest {
-    path: String,
-    host: String,
-    body: Vec<u8>,
-    content_type: String,
+/// Pending request metadata (GET or POST)
+enum PendingRequest {
+    Get {
+        path: String,
+        host: String,
+    },
+    Post {
+        path: String,
+        host: String,
+        body: Vec<u8>,
+        content_type: String,
+    },
 }
 
 /// Simple HTTP client that implements the Client trait
 pub struct HttpClient {
     port: u32,
     connections: HashMap<u32, HttpClientConnection>,
-    pending_requests: HashMap<u32, Vec<u8>>,
-    pending_post_requests: HashMap<u32, PendingPostRequest>, // Keyed by client port
-    client_port_to_connection: HashMap<u32, u32>,            // Maps client port to connection port
+    pending_request_bytes: HashMap<u32, Vec<u8>>,
+    pending_request_meta: HashMap<u32, PendingRequest>, // Keyed by client port
+    client_port_to_connection: HashMap<u32, u32>,
     responses: HashMap<u32, Vec<u8>>,
 }
 
@@ -66,8 +72,8 @@ impl HttpClient {
         Self {
             port,
             connections: HashMap::new(),
-            pending_requests: HashMap::new(),
-            pending_post_requests: HashMap::new(),
+            pending_request_bytes: HashMap::new(),
+            pending_request_meta: HashMap::new(),
             client_port_to_connection: HashMap::new(),
             responses: HashMap::new(),
         }
@@ -106,7 +112,7 @@ impl HttpClient {
 
     pub fn make_request(&mut self, connection_port: u32, method: &str, path: &str, host: &str) {
         let request = self.create_http_request(method, path, host, None, None);
-        self.pending_requests.insert(connection_port, request);
+        self.pending_request_bytes.insert(connection_port, request);
         info!("HTTP client queued {} {} request to {}", method, path, host);
     }
 
@@ -119,7 +125,7 @@ impl HttpClient {
         content_type: &str,
     ) {
         let request = self.create_http_request("POST", path, host, Some(body), Some(content_type));
-        self.pending_requests.insert(connection_port, request);
+        self.pending_request_bytes.insert(connection_port, request);
         info!(
             "HTTP client queued POST {} request to {} with {} bytes",
             path,
@@ -136,9 +142,9 @@ impl HttpClient {
         body: Vec<u8>,
         content_type: String,
     ) {
-        self.pending_post_requests.insert(
+        self.pending_request_meta.insert(
             client_port,
-            PendingPostRequest {
+            PendingRequest::Post {
                 path,
                 host,
                 body,
@@ -160,6 +166,19 @@ impl HttpClient {
         content_type: String,
     ) {
         self.queue_post_request_impl(client_port, path, host, body, content_type);
+    }
+
+    fn queue_get_request_impl(&mut self, client_port: u32, path: String, host: String) {
+        self.pending_request_meta
+            .insert(client_port, PendingRequest::Get { path, host });
+        info!(
+            "HTTP client queued GET request for client port {}",
+            client_port
+        );
+    }
+
+    pub fn queue_get_request(&mut self, client_port: u32, path: String, host: String) {
+        self.queue_get_request_impl(client_port, path, host);
     }
 
     pub fn parse_http_response(&self, response: &[u8]) -> Option<(u16, String)> {
@@ -194,19 +213,23 @@ impl Client for HttpClient {
         let connection = HttpClientConnection::new(port);
         self.connections.insert(port, connection);
 
-        // Check if there's a pending POST request for this client port
-        if let Some(post_req) = self.pending_post_requests.remove(&self.port) {
+        // Check if there's a pending request for this client port
+        if let Some(pending) = self.pending_request_meta.remove(&self.port) {
             self.client_port_to_connection.insert(self.port, port);
-            let request = self.create_http_request(
-                "POST",
-                &post_req.path,
-                &post_req.host,
-                Some(&post_req.body),
-                Some(&post_req.content_type),
-            );
-            self.pending_requests.insert(port, request);
+            let request_bytes = match &pending {
+                PendingRequest::Get { path, host } => {
+                    self.create_http_request("GET", path, host, None, None)
+                }
+                PendingRequest::Post {
+                    path,
+                    host,
+                    body,
+                    content_type,
+                } => self.create_http_request("POST", path, host, Some(body), Some(content_type)),
+            };
+            self.pending_request_bytes.insert(port, request_bytes);
             info!(
-                "HTTP client constructed POST request for connection port {}",
+                "HTTP client constructed request for connection port {}",
                 port
             );
         }
@@ -224,9 +247,13 @@ impl Client for HttpClient {
         self.queue_post_request_impl(client_port, path, host, body, content_type);
     }
 
+    fn queue_get_request(&mut self, client_port: u32, path: String, host: String) {
+        self.queue_get_request_impl(client_port, path, host);
+    }
+
     fn on_connect_failed(&mut self, port: u32) {
         info!("HTTP client connection failed on port {}", port);
-        self.pending_requests.remove(&port);
+        self.pending_request_bytes.remove(&port);
     }
 
     fn on_data(&mut self, port: u32, data: &[u8]) {
@@ -256,19 +283,19 @@ impl Client for HttpClient {
     fn on_reset(&mut self, port: u32) {
         info!("HTTP client connection reset on port {}", port);
         self.connections.remove(&port);
-        self.pending_requests.remove(&port);
+        self.pending_request_bytes.remove(&port);
         self.responses.remove(&port);
     }
 
     fn on_shutdown(&mut self, port: u32) {
         info!("HTTP client connection shutdown on port {}", port);
         self.connections.remove(&port);
-        self.pending_requests.remove(&port);
+        self.pending_request_bytes.remove(&port);
         self.responses.remove(&port);
     }
 
     fn get_write_data(&mut self, port: u32) -> Option<Vec<u8>> {
-        if let Some(request) = self.pending_requests.remove(&port) {
+        if let Some(request) = self.pending_request_bytes.remove(&port) {
             info!(
                 "HTTP client sending {} bytes on port {}",
                 request.len(),
