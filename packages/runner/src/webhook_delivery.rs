@@ -30,6 +30,8 @@ pub struct WebhookDeliveryService {
     max_retries: u32,
     target_host: String,
     submission_body: Vec<u8>,
+    /// True when the last queued request was GET (no retries); false for POST (retries allowed).
+    pending_is_get: bool,
     webhook_completion_handler: Option<Arc<Mutex<dyn WebhookCompletionHandler>>>,
 }
 
@@ -47,6 +49,7 @@ impl WebhookDeliveryService {
             max_retries,
             target_host,
             submission_body: Vec::new(),
+            pending_is_get: false,
             webhook_completion_handler,
         }
     }
@@ -100,7 +103,7 @@ impl Client for WebhookDeliveryService {
                                 handler_guard.on_webhook_success();
                             }
                         }
-                    } else if self.retries < self.max_retries {
+                    } else if !self.pending_is_get && self.retries < self.max_retries {
                         self.retries += 1;
                         info!(
                             "Webhook submit retry {}/{} after status {}",
@@ -154,7 +157,9 @@ impl Client for WebhookDeliveryService {
                     .http_client
                     .parse_http_response(connection.get_buffer())
                 {
-                    return status_code == 200 || self.retries >= self.max_retries;
+                    return status_code == 200
+                        || self.retries >= self.max_retries
+                        || self.pending_is_get;
                 }
             }
         }
@@ -170,10 +175,18 @@ impl Client for WebhookDeliveryService {
         content_type: String,
     ) {
         self.retries = 0;
+        self.pending_is_get = false;
         self.submission_body = body.clone();
         self.target_host = host.clone();
         self.http_client
             .queue_post_request(client_port, path, host, body, content_type);
+    }
+
+    fn queue_get_request(&mut self, client_port: u32, path: String, host: String) {
+        self.retries = 0;
+        self.pending_is_get = true;
+        self.target_host = host.clone();
+        self.http_client.queue_get_request(client_port, path, host);
     }
 }
 
