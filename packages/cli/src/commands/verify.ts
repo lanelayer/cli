@@ -11,7 +11,7 @@ type VerifyArgs = {
 
 function parseArgs(args: string[]): VerifyArgs {
   const result: VerifyArgs = {
-    apiUrl: process.env.LANE_ANALYTICS_URL || "https://lanelayer-analytics.fly.dev",
+    apiUrl: process.env.LANE_ANALYTICS_URL || "https://analytics.lanelayer.com/",
     help: false,
   };
 

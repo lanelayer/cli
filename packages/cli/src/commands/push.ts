@@ -99,7 +99,7 @@ function resolveRegistryPath(registryPath: string): {
 }
 
 function getLaneAnalyticsUrl(): string {
-  return (process.env.LANE_ANALYTICS_URL || "https://lanelayer-analytics.fly.dev").replace(
+  return (process.env.LANE_ANALYTICS_URL || "https://analytics.lanelayer.com/").replace(
     /\/+$/,
     ""
   );
