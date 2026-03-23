@@ -16,6 +16,7 @@ import {
 } from "../constants";
 import { TarContextBuilder } from "../tar-context";
 import { showCommandHelp } from "./help";
+import { readAuthToken } from "../auth-store";
 
 // Import the getCacheDirectory function from build.ts
 function getCacheDirectory(imageTag?: string, profile?: string): string {
@@ -95,6 +96,17 @@ function resolveRegistryPath(registryPath: string): {
 
   // Return original path if no custom remote mapping found
   return { resolvedPath: registryPath };
+}
+
+function getLaneAnalyticsUrl(): string {
+  return (process.env.LANE_ANALYTICS_URL || "https://analytics.lanelayer.com/").replace(
+    /\/+$/,
+    ""
+  );
+}
+
+function getLaneSessionId(): string {
+  return process.env.LANE_SESSION_ID || getPathHash();
 }
 
 export function handlePushCommand(args: string[]): void {
@@ -547,11 +559,12 @@ export function handlePushCommand(args: string[]): void {
     console.log(`\n✅ Build and push completed successfully!`);
     console.log(`📤 Successfully pushed to: ${resolvedRegistryPath}`);
 
-    const notifyUrl =
-      resolved.config?.notify_url ??
-      DEFAULT_LANE_NOTIFY_ENDPOINT;
+    const notifyUrl = resolved.config?.notify_url ?? DEFAULT_LANE_NOTIFY_ENDPOINT;
     if (notifyUrl) {
       try {
+        const sessionId = getLaneSessionId();
+        const analyticsUrl = getLaneAnalyticsUrl();
+        const authToken = readAuthToken(analyticsUrl, sessionId);
         const notificationData = {
           type: "push",
           registry_path: resolvedRegistryPath,
@@ -560,12 +573,29 @@ export function handlePushCommand(args: string[]): void {
           success: true,
           profile: "prod",
           platforms: ["linux/riscv64"],
+          session_id: sessionId,
           digest: digest ? `sha256:${digest}` : undefined,
         };
 
         console.log(`📢 Sending notification to: ${notifyUrl}`);
+        if (!authToken) {
+          console.log(
+            `🔐 No verified auth token found for session '${sessionId}'.`
+          );
+          console.log(
+            "   Register and verify your email to attach identity to lane workflow notifications:"
+          );
+          console.log(
+            `   1) lane signup <email> --session ${sessionId} --api-url ${analyticsUrl}`
+          );
+          console.log(
+            `   2) lane verify <6_digit_code> --session ${sessionId} --api-url ${analyticsUrl}`
+          );
+          console.log("   Continuing push without auth token...");
+        }
+        const authHeader = authToken ? ` -H "Authorization: Bearer ${authToken}"` : "";
         const response = execSync(
-          `curl -X POST -H "Content-Type: application/json" -d '${JSON.stringify(
+          `curl -X POST -H "Content-Type: application/json"${authHeader} -d '${JSON.stringify(
             notificationData
           )}' "${notifyUrl}"`,
           {

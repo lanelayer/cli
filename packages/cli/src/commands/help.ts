@@ -217,6 +217,8 @@ Build a production (RISC-V) container and push it to a registry.
   lane push my-registry.com/myapp:latest --force-rebuild
 
 🔧 Notes:
+  • Short path (e.g. myapp:latest) uses default registry ghcr.io/lanelayer
+  • Set LANE_NOTIFY_URL to the lane handshake endpoint to get a live RPC after push
   • No argument: pushes to ttl.sh/lane-<path-hash>:1h (ephemeral, 1h TTL) and notifies with that registry path
   • Short path (e.g. myapp:latest) uses default registry cli-backend-registry.fly.dev
   • After a successful push, the CLI notifies the lane handshake endpoint (LANE_NOTIFY_URL or default) with the registry path
@@ -485,6 +487,7 @@ Show introduction and quick start guide for LaneLayer.
 💡 What you'll learn:
   • What LaneLayer is and how it works
   • Quick start workflow for HTTP server development
+  • Email registration + verification for lane workflow notifications
   • Profile guide and when to use each
   • Common commands and examples
   • Pro tips for effective development

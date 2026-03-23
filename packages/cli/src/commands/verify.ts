@@ -1,5 +1,6 @@
 import { URL } from "url";
 import { showCommandHelp } from "./help";
+import { saveAuthToken } from "../auth-store";
 
 type VerifyArgs = {
   code?: string;
@@ -10,7 +11,7 @@ type VerifyArgs = {
 
 function parseArgs(args: string[]): VerifyArgs {
   const result: VerifyArgs = {
-    apiUrl: process.env.LANE_ANALYTICS_URL || "https://lanelayer-analytics.fly.dev",
+    apiUrl: process.env.LANE_ANALYTICS_URL || "https://analytics.lanelayer.com/",
     help: false,
   };
 
@@ -73,9 +74,13 @@ export async function handleVerifyCommand(args: string[]): Promise<void> {
   }
 
   let verified = false;
+  let authToken: string | undefined;
   try {
     const obj = JSON.parse(resp.text || "{}");
     verified = Boolean(obj.verified);
+    if (typeof obj.auth_token === "string" && obj.auth_token.length > 0) {
+      authToken = obj.auth_token;
+    }
   } catch {
     verified = false;
   }
@@ -84,6 +89,12 @@ export async function handleVerifyCommand(args: string[]): Promise<void> {
   if (!verified) {
     console.log("Code incorrect or already used. Re-check the email and try again.");
     process.exit(2);
+  }
+  if (authToken) {
+    const storePath = saveAuthToken(base, parsed.session, authToken);
+    console.log(`Auth token saved: ${storePath}`);
+  } else {
+    console.log("No auth token returned by server.");
   }
   console.log("Email confirmed. You may proceed.");
 }
