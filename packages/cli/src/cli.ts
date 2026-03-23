@@ -107,6 +107,8 @@ Build and run HTTP server containers for payments and intent execution.
   lane intro                              # Get started guide
   lane create myapp --template python     # New HTTP server project
   lane up dev                             # Build and run (fastest)
+  lane signup you@example.com --session <id> # Register email for lane workflow
+  lane verify <6_digit_code> --session <id>  # Verify email and store auth token
   lane up stage                           # Build and run (testing environment)
   lane up prod                            # Build and run (production-ready)
 

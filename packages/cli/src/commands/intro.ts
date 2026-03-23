@@ -31,7 +31,14 @@ LaneLayer handles the complexity behind the scenes - you just write standard HTT
    lane exec "ls -la"   # Run commands in container
    lane shell           # Open interactive shell
 
-4. Stop when done:
+4. Register your email for lane workflow notifications:
+   lane signup you@example.com --session <session_id>
+   lane verify <6_digit_code> --session <session_id>
+
+   Tip: default session is current project hash. Override with:
+   export LANE_SESSION_ID=my-session
+
+5. Stop when done:
    lane down
 
 🎯 Profile Guide

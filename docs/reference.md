@@ -9,6 +9,8 @@ Complete command reference for LaneLayer CLI.
 | Command                                | Description                           |
 | -------------------------------------- | ------------------------------------- |
 | `lane intro`                           | Show introduction                     |
+| `lane signup <email> --session <id>`   | Register email for a lane session     |
+| `lane verify <code> --session <id>`    | Verify email code and save auth token |
 | `lane create <name> --template <lang>` | Create new project                    |
 | `lane build <profile> [options]`       | Build container images                |
 | `lane up <profile> [options]`          | Build and run                         |
@@ -64,6 +66,8 @@ Complete command reference for LaneLayer CLI.
 lane create myapp --template python
 cd myapp
 lane up dev --hot
+lane signup you@example.com --session my-session
+lane verify 123456 --session my-session
 
 # Debug
 lane logs --follow
