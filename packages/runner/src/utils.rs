@@ -73,6 +73,12 @@ pub trait Client: Send {
     ) {
         // Default: no-op
     }
+
+    /// Queue a GET request to be sent when connection is established
+    /// Default implementation does nothing (for clients that don't support GET)
+    fn queue_get_request(&mut self, _client_port: u32, _path: String, _host: String) {
+        // Default: no-op
+    }
 }
 
 pub struct RunnerState {

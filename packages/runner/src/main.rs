@@ -1,6 +1,6 @@
 use cartesi_machine::{config::runtime::RuntimeConfig, machine::Machine};
 use env_logger::{Builder, Env};
-use log::{info};
+use log::info;
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -191,12 +191,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 tokio::task::yield_now().await;
             }
             ExecutionState::HealthCheckSucceeded => {
-                info!(
-                    "Health check passed — cleaning up health check client before snapshot"
-                );
+                info!("Health check passed — cleaning up health check client before snapshot");
 
                 loop {
-                    if let Err(e) = run_machine_loop_iteration(machine_arc.clone(), state.clone()).await {
+                    if let Err(e) =
+                        run_machine_loop_iteration(machine_arc.clone(), state.clone()).await
+                    {
                         eprintln!("Machine loop iteration failed during cleanup: {}", e);
                         break;
                     }

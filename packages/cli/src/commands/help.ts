@@ -39,10 +39,57 @@ export function showCommandHelp(command: string): void {
     case "submit":
       showSubmitHelp();
       break;
+    case "signup":
+      showSignupHelp();
+      break;
+    case "verify":
+      showVerifyHelp();
+      break;
     default:
       console.log(`❓ Unknown command: ${command}`);
       console.log('Use "lane --help" to see all available commands');
   }
+}
+
+function showSignupHelp(): void {
+  console.log(`
+✉️  lane signup - Register email for a session
+============================================
+
+Registers your email address for a LaneLayer session and triggers a 6-digit
+verification code email.
+
+📋 Usage:
+  lane signup <email> --session <session_id> [--api-url <url>]
+
+⚙️  Options:
+  --session <id>        Session ID for telemetry and registration
+  --api-url <url>       Analytics API base URL (default: $LANE_ANALYTICS_URL or https://lanelayer-analytics.fly.dev)
+
+💡 Examples:
+  lane signup dev@example.com --session abc123
+  lane signup dev@example.com --session abc123 --api-url http://localhost:8080
+`);
+}
+
+function showVerifyHelp(): void {
+  console.log(`
+🔐 lane verify - Verify email code for a session
+===============================================
+
+Verifies the 6-digit code emailed to you after running \`lane signup\`.
+
+📋 Usage:
+  lane verify <6_digit_code> --session <session_id> [--api-url <url>]
+
+⚙️  Options:
+  --session <id>        Session ID for telemetry and verification
+  --api-url <url>       Analytics API base URL (default: $LANE_ANALYTICS_URL or https://lanelayer-analytics.fly.dev)
+
+💡 Examples:
+  lane verify 123456 --session abc123
+  lane verify 123456 --session abc123 --api-url http://localhost:8080
+`);
 }
 
 function showBuildHelp(): void {
@@ -150,7 +197,7 @@ function showPushHelp(): void {
 Build a production (RISC-V) container and push it to a registry.
 
 📋 Usage:
-  lane push <registry-path> [options]
+  lane push [registry-path] [options]
 
 ⚙️  Options:
   📁 --cache-dir <path>                  Custom cache directory
@@ -162,23 +209,19 @@ Build a production (RISC-V) container and push it to a registry.
   🔗 --git                                Only push to git remote, don't build
 
 💡 Examples:
-  lane push myapp:latest                    # Uses default registry (ghcr.io/lanelayer)
+  lane push                                 # Push to ttl.sh/lane-<hash>:1h (ephemeral, 1h TTL)
+  lane push myapp:latest                    # Uses default registry (cli-backend-registry.fly.dev)
   lane push my-registry.com/myapp:latest
   lane push ghcr.io/myuser/myapp:v1.0.0
   lane push my-registry.com/myapp:latest --depot
   lane push my-registry.com/myapp:latest --force-rebuild
 
 🔧 Notes:
-<<<<<<< Updated upstream
   • Short path (e.g. myapp:latest) uses default registry ghcr.io/lanelayer
   • Set LANE_NOTIFY_URL to the lane handshake endpoint to get a live RPC after push
-=======
   • No argument: pushes to ttl.sh/lane-<path-hash>:1h (ephemeral, 1h TTL) and notifies with that registry path
   • Short path (e.g. myapp:latest) uses default registry cli-backend-registry.fly.dev
   • After a successful push, the CLI notifies the lane handshake endpoint (LANE_NOTIFY_URL or default) with the registry path
-  • Push notifications use session auth when available (LANE_SESSION_ID or project hash)
-  • If auth is missing, CLI prompts for: lane signup + lane verify
->>>>>>> Stashed changes
   • Always builds for RISC-V 64-bit architecture
   • Supports custom registry mappings via ~/.lane/remotes/
   • --source and --git are mutually exclusive
