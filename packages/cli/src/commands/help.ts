@@ -210,17 +210,15 @@ Build a production (RISC-V) container and push it to a registry.
 
 💡 Examples:
   lane push                                 # Push to ttl.sh/lane-<hash>:1h (ephemeral, 1h TTL)
-  lane push myapp:latest                    # Uses default registry (cli-backend-registry.fly.dev)
   lane push my-registry.com/myapp:latest
   lane push ghcr.io/myuser/myapp:v1.0.0
   lane push my-registry.com/myapp:latest --depot
   lane push my-registry.com/myapp:latest --force-rebuild
 
 🔧 Notes:
-  • Short path (e.g. myapp:latest) uses default registry ghcr.io/lanelayer
+  • Registry path must be explicit (e.g. ghcr.io/myuser/myapp:v1.0.0)
   • Set LANE_NOTIFY_URL to the lane handshake endpoint to get a live RPC after push
   • No argument: pushes to ttl.sh/lane-<path-hash>:1h (ephemeral, 1h TTL) and notifies with that registry path
-  • Short path (e.g. myapp:latest) uses default registry cli-backend-registry.fly.dev
   • After a successful push, the CLI notifies the lane handshake endpoint (LANE_NOTIFY_URL or default) with the registry path
   • Always builds for RISC-V 64-bit architecture
   • Supports custom registry mappings via ~/.lane/remotes/

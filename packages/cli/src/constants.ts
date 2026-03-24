@@ -3,9 +3,6 @@ export const LANE_SNAPSHOT_BUILDER_IMAGE =
 export const GUEST_AGENT_IMAGE =
   "ghcr.io/lanelayer/lane-guest-agent@sha256:9b59e773b3bfe9336d4d87299bc6da594f6cbec70a10bc4fde33ab37d78b056a";
 
-/** Default container registry for `lane push` when no registry is specified (e.g. `lane push myapp:latest`). */
-export const DEFAULT_REGISTRY_BASE = "cli-backend-registry.fly.dev";
-
 /**
  * Default URL the CLI notifies after a successful push (lane handshake).
  * Override with env LANE_NOTIFY_URL.
