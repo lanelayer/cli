@@ -12,7 +12,6 @@ import {
 } from "../checks";
 import {
   DEFAULT_LANE_NOTIFY_ENDPOINT,
-  DEFAULT_REGISTRY_BASE,
 } from "../constants";
 import { TarContextBuilder } from "../tar-context";
 import { showCommandHelp } from "./help";
@@ -166,10 +165,6 @@ export function handlePushCommand(args: string[]): void {
     const pathHash = getPathHash();
     registryPath = `ttl.sh/lane-${pathHash}:1h`;
     console.log(`📤 No registry path given, using ephemeral: ${registryPath}`);
-  } else if (!registryPath.includes("/")) {
-    // Use default LaneLayer registry when path has no slash (e.g. myapp:latest)
-    registryPath = `${DEFAULT_REGISTRY_BASE}/${registryPath}`;
-    console.log(`📤 Using default registry: ${registryPath}`);
   }
 
   // Resolve custom remote registry mappings
