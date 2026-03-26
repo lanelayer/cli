@@ -306,6 +306,18 @@ impl Client for HttpClient {
         None
     }
 
+    fn get_response_data(&mut self, port: u32) -> Option<Vec<u8>> {
+        if let Some(response) = self.responses.remove(&port) {
+            return Some(response);
+        }
+
+        if let Some(connection_port) = self.client_port_to_connection.get(&port).copied() {
+            return self.responses.remove(&connection_port);
+        }
+
+        None
+    }
+
     fn should_shutdown(&mut self, port: u32) -> bool {
         // Shutdown after sending request and receiving response
         if let Some(connection) = self.connections.get(&port) {

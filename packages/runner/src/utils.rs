@@ -58,6 +58,12 @@ pub trait Client: Send {
     /// Called to get data to write to a connection
     fn get_write_data(&mut self, port: u32) -> Option<Vec<u8>>;
 
+    /// Called to get received response data for a client/connection port
+    /// Default implementation does nothing (for clients that don't buffer responses)
+    fn get_response_data(&mut self, _port: u32) -> Option<Vec<u8>> {
+        None
+    }
+
     /// Called to check if a connection should be shut down
     fn should_shutdown(&mut self, port: u32) -> bool;
 

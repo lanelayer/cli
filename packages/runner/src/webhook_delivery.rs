@@ -150,6 +150,10 @@ impl Client for WebhookDeliveryService {
         self.http_client.get_write_data(port)
     }
 
+    fn get_response_data(&mut self, port: u32) -> Option<Vec<u8>> {
+        self.http_client.get_response_data(port)
+    }
+
     fn should_shutdown(&mut self, port: u32) -> bool {
         if let Some(connection) = self.http_client.get_connection(&port) {
             if connection.is_response_complete() {
