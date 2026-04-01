@@ -11,11 +11,30 @@ pub trait KvStore: Send + Sync {
     fn remove_kv(&mut self, key: &str) -> Option<Vec<u8>>;
 }
 
+/// Block metadata exposed to the guest via GET /metadata/json
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct BlockMetadata {
+    pub timestamp: u64,
+    pub block_number: u64,
+    /// Hex-encoded with 0x prefix — parent of this block (stable at execution time)
+    pub parent_block_hash: String,
+    /// Hex-encoded with 0x prefix
+    pub anchor_block_hash: String,
+    pub anchor_block_number: u64,
+}
+
+impl BlockMetadata {
+    fn to_json(&self) -> String {
+        serde_json::to_string(self).expect("BlockMetadata serialization is infallible")
+    }
+}
+
 /// Simple HTTP server that implements the Service trait
 pub struct HttpServer {
     port: u32,
     connections: HashMap<u32, HttpConnection>,
     kv_store: Option<Arc<std::sync::Mutex<dyn KvStore>>>,
+    block_metadata: Option<BlockMetadata>,
 }
 
 struct HttpConnection {
@@ -41,6 +60,7 @@ impl HttpServer {
             port,
             connections: HashMap::new(),
             kv_store: None,
+            block_metadata: None,
         }
     }
 
@@ -50,6 +70,24 @@ impl HttpServer {
             port,
             connections: HashMap::new(),
             kv_store: Some(kv_store),
+            block_metadata: None,
+        }
+    }
+
+    pub fn with_kv_store_and_metadata(
+        port: u32,
+        kv_store: Arc<std::sync::Mutex<dyn KvStore>>,
+        block_metadata: BlockMetadata,
+    ) -> Self {
+        info!(
+            "Creating HTTP server on port {} with KV store and block metadata (block #{})",
+            port, block_metadata.block_number
+        );
+        Self {
+            port,
+            connections: HashMap::new(),
+            kv_store: Some(kv_store),
+            block_metadata: Some(block_metadata),
         }
     }
 
@@ -125,6 +163,10 @@ impl HttpServer {
                 info!("Routing KV request {} {} to KV store", method, path);
                 return self.handle_kv_request(method, path, &request_str);
             }
+        }
+
+        if path == "/metadata/json" && method == "GET" {
+            return Some(self.handle_metadata_json_request());
         }
 
         let response = match (method, path) {
@@ -253,11 +295,36 @@ impl HttpServer {
         }
     }
 
+    fn handle_metadata_json_request(&self) -> Vec<u8> {
+        match &self.block_metadata {
+            Some(meta) => {
+                let body = meta.to_json();
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+                    body.len(),
+                    body
+                )
+                .into_bytes()
+            }
+            None => {
+                warn!("GET /metadata/json requested but no block metadata is set");
+                self.build_error_response(404, "Block metadata not available")
+            }
+        }
+    }
+
     fn build_error_response(&self, status_code: u16, message: &str) -> Vec<u8> {
+        let reason = match status_code {
+            400 => "Bad Request",
+            404 => "Not Found",
+            405 => "Method Not Allowed",
+            500 => "Internal Server Error",
+            _ => "Error",
+        };
         format!(
             "HTTP/1.1 {} {}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
             status_code,
-            "Internal Server Error",
+            reason,
             message.len(),
             message
         )
@@ -359,4 +426,18 @@ pub fn add_http_server_with_kv_store(
     let http_server = HttpServer::with_kv_store(8080, kv_store);
     state.add_listener(8080, Box::new(http_server));
     info!("HTTP server with KV store added to runner state on port 8080");
+}
+
+pub fn add_http_server_with_kv_store_and_metadata(
+    state: &mut RunnerState,
+    kv_store: Arc<std::sync::Mutex<dyn KvStore>>,
+    block_metadata: BlockMetadata,
+) {
+    if state.get_listener(8080).is_some() {
+        warn!("HTTP server on port 8080 already registered; skipping to avoid overwriting existing listener");
+        return;
+    }
+    let http_server = HttpServer::with_kv_store_and_metadata(8080, kv_store, block_metadata);
+    state.add_listener(8080, Box::new(http_server));
+    info!("HTTP server with KV store and block metadata added to runner state on port 8080");
 }
