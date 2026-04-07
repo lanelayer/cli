@@ -2,7 +2,6 @@ use cartesi_machine::machine::Machine;
 use cartesi_machine::types::cmio::{
     AutomaticReason, CmioRequest, CmioResponseReason, ManualReason,
 };
-use hex;
 use log::info;
 use std::collections::{HashMap, VecDeque};
 use vsock_protocol::{
@@ -95,7 +94,6 @@ pub struct RunnerState {
     cmio_write_queue: VecDeque<Packet>,
     cmio_read_queue: Vec<Packet>,
     client_connect_attempts: HashMap<u32, u32>,
-    root_hash: Option<Vec<u8>>, // Stores the root hash after machine execution completes
 }
 
 impl RunnerState {
@@ -108,18 +106,7 @@ impl RunnerState {
             cmio_write_queue: VecDeque::new(),
             cmio_read_queue: Vec::new(),
             client_connect_attempts: HashMap::new(),
-            root_hash: None,
         }
-    }
-
-    /// Get the root hash stored after machine execution
-    pub fn get_root_hash(&self) -> Option<&[u8]> {
-        self.root_hash.as_deref()
-    }
-
-    /// Set the root hash after machine execution
-    pub fn set_root_hash(&mut self, root_hash: Vec<u8>) {
-        self.root_hash = Some(root_hash);
     }
 
     pub fn add_listener(&mut self, port: u32, service: Box<dyn Service>) {
@@ -452,14 +439,6 @@ pub async fn run_machine_loop_iteration(
     }
     for packet in packets_to_send {
         state.add_to_write_queue(packet);
-    }
-
-    // Capture root_hash at the end of each loop iteration
-    // This ensures we always have the most recent state's root_hash
-    // and will have the final root_hash when execution completes
-    if let Ok(root_hash) = machine.root_hash() {
-        state.set_root_hash(root_hash.to_vec());
-        info!("🔷 RUNNER CAPTURED ROOT HASH: {}", hex::encode(root_hash));
     }
 
     info!("Machine cycle = {}", machine.mcycle().unwrap());
