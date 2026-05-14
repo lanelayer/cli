@@ -6,7 +6,6 @@ use std::io::{Read, Write};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
-use std::time::Duration;
 use vsock::{VsockAddr, VsockListener, VsockStream, VMADDR_CID_ANY};
 use vsock_protocol::{
     Packet, VirtioVsockHdr, VSOCK_OP_REQUEST, VSOCK_OP_RESPONSE, VSOCK_OP_RST, VSOCK_OP_RW,
@@ -15,7 +14,6 @@ use vsock_protocol::{
 
 const CMIO_QUEUE_ID: u16 = 0x27;
 const RW_BUF_SIZE: usize = 4096;
-const LOOP_SLEEP_DURATION: Duration = Duration::from_secs(5);
 
 const GUEST_CID: u32 = 1;
 const HOST_CID: u32 = 3;
@@ -467,6 +465,9 @@ pub fn run_agent(cmio_driver: Arc<Mutex<CmioIoDriver>>) -> Result<(), Box<dyn Er
             error!(target: "guest", "Error polling CMIO: {}", e);
         }
 
-        thread::sleep(LOOP_SLEEP_DURATION);
+        // Cooperate with the kernel scheduler (sched_yield on Linux) instead of
+        // a fixed sleep: we return when the OS has capacity; CMIO still yields
+        // to the host inside send_cmio.
+        thread::yield_now();
     }
 }
